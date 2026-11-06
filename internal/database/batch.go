@@ -6,112 +6,53 @@ import (
 	"invx/internal/storage"
 )
 
-type batchOperation struct {
-	kind  byte
-	key   string
-	value []byte
-}
-
+// Batch collects puts and deletes and applies them atomically with Commit.
+//
+// Ordering rule (scenario B5): ops are applied in the order they were added.
+// If a batch puts X and later deletes X, X ends up deleted. If it deletes X
+// and later puts X, X ends up with the put value. Recovery replays the ops of
+// a frame in the same order, so the rule holds after a crash too.
 type Batch struct {
-	db         *DB
-	operations []batchOperation
-	committed  bool
+	db        *DB
+	ops       []storage.Op
+	committed bool
 }
 
-// Create a new batch.
-func (db *DB) NewBatch() *Batch {
-	return &Batch{
-		db: db,
-	}
-}
+// NewBatch starts an empty batch.
+func (db *DB) NewBatch() *Batch { return &Batch{db: db} }
 
-// Add a PUT operation.
-func (b *Batch) Put(key string, value []byte) error {
-	if b.committed {
-		return errors.New("batch already committed")
-	}
-
-	if _, err := storage.EncodeRecord(storage.RecordPut, key, value); err != nil {
+// Put adds a put. The key and value are copied.
+func (b *Batch) Put(key, value []byte) error {
+	op := storage.Op{Kind: storage.OpPut, Key: append([]byte(nil), key...), Value: append([]byte(nil), value...)}
+	if err := storage.ValidateOp(op); err != nil {
 		return err
 	}
-
-	valueCopy := append([]byte(nil), value...)
-
-	b.operations = append(b.operations, batchOperation{
-		kind:  storage.RecordPut,
-		key:   key,
-		value: valueCopy,
-	})
-
+	b.ops = append(b.ops, op)
 	return nil
 }
 
-// Add a DELETE operation.
-func (b *Batch) Delete(key string) error {
-	if b.committed {
-		return errors.New("batch already committed")
-	}
-
-	if _, err := storage.EncodeRecord(storage.RecordDelete, key, nil); err != nil {
+// Delete adds a delete. Deleting a missing key is not an error.
+func (b *Batch) Delete(key []byte) error {
+	op := storage.Op{Kind: storage.OpDelete, Key: append([]byte(nil), key...)}
+	if err := storage.ValidateOp(op); err != nil {
 		return err
 	}
-
-	b.operations = append(b.operations, batchOperation{
-		kind: storage.RecordDelete,
-		key:  key,
-	})
-
+	b.ops = append(b.ops, op)
 	return nil
 }
 
-// Execute all operations in the batch.
+// Len is the number of ops in the batch.
+func (b *Batch) Len() int { return len(b.ops) }
+
+// Commit writes the whole batch as ONE frame with ONE fsync. Either the whole
+// frame is valid on disk (CRC + commit marker) or recovery discards all of it.
 func (b *Batch) Commit() error {
 	if b.committed {
 		return errors.New("batch already committed")
 	}
-
-	if b.db == nil {
-		return errors.New("database is nil")
+	if err := b.db.write(b.ops); err != nil {
+		return err
 	}
-
-	db := b.db
-
-	db.mu.Lock()
-	defer db.mu.Unlock()
-
-	if db.closed || db.failed {
-		return errors.New("database is not writable")
-	}
-
-	// Validate and encode all records before writing.
-	records := make([][]byte, len(b.operations))
-
-	for i, op := range b.operations {
-		record, err := storage.EncodeRecord(op.kind, op.key, op.value)
-		if err != nil {
-			return err
-		}
-		records[i] = record
-	}
-
-	// Append records and update the index.
-	for i, op := range b.operations {
-		offset, err := db.log.Append(records[i])
-		if err != nil {
-			db.failed = true
-			return err
-		}
-
-		if op.kind == storage.RecordPut {
-			db.index.Set(op.key, valueRef{
-				offset: offset + int64(storage.HeaderSize) + int64(len(op.key)),
-				length: uint32(len(op.value)),
-			})
-		} else {
-			db.index.Delete(op.key)
-		}
-	}
-
 	b.committed = true
 	return nil
 }

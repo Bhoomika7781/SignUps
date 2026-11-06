@@ -1,66 +1,52 @@
 package database
 
-import "sync"
+import "invx/internal/storage"
 
+// valueRef says where a key's current value lives in the data file.
+// The index is a plain map protected by DB.mu; it has no lock of its own.
 type valueRef struct {
-	offset int64
-	length uint32
+	offset int64  // absolute file offset of the value bytes
+	length uint32 // value length
+	keyLen uint16 // kept so we can track live bytes for compaction
 }
 
-type Index struct {
-	mu      sync.RWMutex
-	entries map[string]valueRef
+// liveSize is how many payload bytes this key would take in a compacted file.
+func (r valueRef) liveSize() int64 {
+	return int64(storage.OpHeaderSize) + int64(r.keyLen) + int64(r.length)
 }
 
-func NewIndex() *Index {
-	return &Index{
-		entries: make(map[string]valueRef),
+type index struct {
+	entries   map[string]valueRef
+	liveBytes int64
+}
+
+func newIndex(sizeHint int) *index {
+	return &index{entries: make(map[string]valueRef, sizeHint)}
+}
+
+func (ix *index) set(key string, ref valueRef) {
+	if old, ok := ix.entries[key]; ok {
+		ix.liveBytes -= old.liveSize()
+	}
+	ix.entries[key] = ref
+	ix.liveBytes += ref.liveSize()
+}
+
+func (ix *index) del(key string) {
+	if old, ok := ix.entries[key]; ok {
+		ix.liveBytes -= old.liveSize()
+		delete(ix.entries, key)
 	}
 }
 
-// Add or update a key in the index.
-func (idx *Index) Set(key string, ref valueRef) {
-	idx.mu.Lock()
-	defer idx.mu.Unlock()
-
-	idx.entries[key] = ref
-}
-
-// Find a key in the index.
-func (idx *Index) Get(key string) (valueRef, bool) {
-	idx.mu.RLock()
-	defer idx.mu.RUnlock()
-
-	ref, found := idx.entries[key]
-	return ref, found
-}
-
-// Remove a key from the index.
-func (idx *Index) Delete(key string) {
-	idx.mu.Lock()
-	defer idx.mu.Unlock()
-
-	delete(idx.entries, key)
-}
-
-// Return the number of stored keys.
-func (idx *Index) Len() int {
-	idx.mu.RLock()
-	defer idx.mu.RUnlock()
-
-	return len(idx.entries)
-}
-
-// Return all stored keys.
-func (idx *Index) Keys() []string {
-	idx.mu.RLock()
-	defer idx.mu.RUnlock()
-
-	keys := make([]string, 0, len(idx.entries))
-
-	for key := range idx.entries {
-		keys = append(keys, key)
+// applyScanned applies all ops of one frame in order. Later ops in the same
+// frame win, so "put X; del X" leaves X deleted and "del X; put X" leaves X set.
+func (ix *index) applyScanned(ops []storage.ScannedOp) {
+	for _, op := range ops {
+		if op.Kind == storage.OpPut {
+			ix.set(string(op.Key), valueRef{offset: op.ValueOffset, length: op.ValueLen, keyLen: uint16(len(op.Key))})
+		} else {
+			ix.del(string(op.Key))
+		}
 	}
-
-	return keys
 }
