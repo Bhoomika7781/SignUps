@@ -1,0 +1,1263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kvdb Admin</title>
+<style>
+:root {
+  --brand: #326690;
+  --brand-dark: #24506f;
+  --bg: #ebeef3;
+  --panel: #ffffff;
+  --panel-2: #f5f7fa;
+  --line: #d4dae3;
+  --line-strong: #b9c2ce;
+  --text: #222b36;
+  --muted: #66727f;
+  --sel: #dbe8f5;
+  --sel-line: #9ec1e3;
+  --ok: #2e7d32;
+  --ok-bg: #e8f5e9;
+  --err: #c62828;
+  --err-bg: #fdecea;
+  --warn: #8a5a00;
+  --kw: #0b52b0;
+  --str: #a31515;
+  --num: #098658;
+  --cmt: #6a737d;
+  --mono: "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, monospace;
+  --sans: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font: 13px/1.4 var(--sans); color: var(--text); background: var(--bg); display: grid;
+       grid-template-rows: 38px 1fr 24px; overflow: hidden; }
+button { font: inherit; }
+
+/* top bar */
+.topbar { background: var(--brand); color: #fff; display: flex; align-items: center; gap: 18px; padding: 0 12px; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; letter-spacing: .2px; }
+.brand svg { width: 22px; height: 22px; }
+.menu { display: flex; gap: 2px; }
+.menu button { background: none; border: 0; color: #e6eef5; padding: 6px 10px; border-radius: 3px; cursor: pointer; }
+.menu button:hover { background: rgba(255,255,255,.14); color: #fff; }
+.topbar .right { margin-left: auto; font-size: 12px; color: #d6e4f0; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.topbar .right .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46vw; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #7bd88f; flex: none; }
+.dot.off { background: #ff8a80; }
+
+/* layout */
+.work { display: grid; grid-template-columns: 270px 1fr; min-height: 0; }
+.explorer { background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.panel-title { height: 34px; display: flex; align-items: center; padding: 0 10px; font-weight: 600; border-bottom: 1px solid var(--line);
+               background: var(--panel-2); gap: 6px; }
+.panel-title .tools { margin-left: auto; display: flex; gap: 2px; }
+.icon-btn { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid transparent; background: none; border-radius: 3px;
+            cursor: pointer; color: #3d4b5a; }
+.icon-btn:hover { background: var(--sel); border-color: var(--sel-line); }
+.icon-btn svg { width: 15px; height: 15px; }
+
+.tree { overflow: auto; padding: 6px 0; flex: 1; user-select: none; }
+.tree ul { list-style: none; margin: 0; padding-left: 16px; }
+.tree > ul { padding-left: 4px; }
+.node { display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 6px; border-radius: 3px; cursor: default; white-space: nowrap; }
+.node:hover { background: #eef3f9; }
+.node.selected { background: var(--sel); outline: 1px solid var(--sel-line); }
+.caret { width: 12px; height: 12px; flex: none; color: #6b7785; transition: transform .12s; }
+.caret.open { transform: rotate(90deg); }
+.caret.none { visibility: hidden; }
+.node svg.ic { width: 15px; height: 15px; flex: none; }
+.node .badge { color: var(--muted); font-size: 11.5px; }
+li.collapsed > ul { display: none; }
+
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.tabs { display: flex; background: var(--panel-2); border-bottom: 1px solid var(--line); height: 34px; padding-left: 4px; }
+.tab { display: flex; align-items: center; gap: 6px; padding: 0 14px; border: 0; background: none; cursor: pointer; color: var(--muted);
+       border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab svg { width: 14px; height: 14px; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--brand-dark); border-bottom-color: var(--brand); background: var(--panel); font-weight: 600; }
+.view { display: none; flex: 1; min-height: 0; flex-direction: column; background: var(--panel); }
+.view.active { display: flex; }
+
+/* dashboard */
+.dash { padding: 16px; overflow: auto; display: flex; flex-direction: column; gap: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.card { border: 1px solid var(--line); border-radius: 4px; background: var(--panel); }
+.card h4 { margin: 0; padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--panel-2);
+           border-bottom: 1px solid var(--line); text-transform: uppercase; letter-spacing: .4px; }
+.card .v { padding: 12px; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.card .sub { padding: 0 12px 12px; color: var(--muted); font-size: 12px; margin-top: -6px; }
+.meter { height: 6px; background: #e3e8ee; border-radius: 3px; margin: 0 12px 12px; overflow: hidden; }
+.meter > div { height: 100%; background: var(--brand); }
+.box { border: 1px solid var(--line); border-radius: 4px; }
+.box h3 { margin: 0; padding: 8px 12px; font-size: 13px; background: var(--panel-2); border-bottom: 1px solid var(--line);
+          display: flex; align-items: center; gap: 8px; }
+.box .body { padding: 12px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { border: 1px solid var(--line-strong); background: #fff; padding: 5px 12px; border-radius: 3px; cursor: pointer; display: inline-flex;
+       align-items: center; gap: 6px; color: var(--text); }
+.btn:hover { background: #f2f6fa; border-color: #95a3b3; }
+.btn.primary { background: var(--brand); border-color: var(--brand-dark); color: #fff; }
+.btn.primary:hover { background: var(--brand-dark); }
+.btn.danger { color: var(--err); }
+.btn svg { width: 14px; height: 14px; }
+.alert { margin-top: 10px; padding: 8px 10px; border-radius: 3px; display: none; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; }
+.alert.ok { display: block; background: var(--ok-bg); color: var(--ok); border: 1px solid #b7dfb9; }
+.alert.err { display: block; background: var(--err-bg); color: var(--err); border: 1px solid #f3b8b3; }
+table.plain { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+table.plain th, table.plain td { border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+table.plain th { color: var(--muted); font-weight: 600; background: var(--panel-2); }
+table.plain td.mono { font-family: var(--mono); font-size: 12px; max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* properties */
+.props { padding: 16px; overflow: auto; }
+.props table { max-width: 760px; }
+.props td:first-child { width: 220px; color: var(--muted); }
+
+/* query tool */
+.qtool { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.toolbar { height: 38px; display: flex; align-items: center; gap: 4px; padding: 0 8px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.toolbar .sep { width: 1px; height: 20px; background: var(--line-strong); margin: 0 4px; }
+.toolbar .ctx { margin-left: auto; color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.toolbar .ctx b { color: var(--text); font-weight: 600; }
+.run { background: var(--brand); color: #fff; border: 1px solid var(--brand-dark); border-radius: 3px; height: 26px; padding: 0 10px; display: flex;
+       align-items: center; gap: 6px; cursor: pointer; }
+.run:hover { background: var(--brand-dark); }
+.run svg { width: 12px; height: 12px; }
+.run:disabled { opacity: .6; cursor: progress; }
+
+.editor-wrap { position: relative; height: 210px; min-height: 90px; display: flex; border-bottom: 1px solid var(--line); background: #fff; }
+.gutter { width: 44px; flex: none; background: #f6f8fa; border-right: 1px solid var(--line); color: #9aa5b1; font: 13px/20px var(--mono);
+          text-align: right; padding: 8px 8px 8px 0; overflow: hidden; user-select: none; }
+.gutter div.cur { color: var(--text); }
+.code { position: relative; flex: 1; min-width: 0; }
+.code pre, .code textarea { position: absolute; inset: 0; margin: 0; padding: 8px 10px; font: 13px/20px var(--mono); white-space: pre;
+                            overflow: auto; tab-size: 2; border: 0; }
+.code pre { pointer-events: none; color: var(--text); }
+.code textarea { resize: none; outline: none; color: transparent; background: transparent; caret-color: #111; }
+.code textarea::selection { background: rgba(50,102,144,.25); color: transparent; }
+.hl-kw { color: var(--kw); font-weight: 600; }
+.hl-str { color: var(--str); }
+.hl-num { color: var(--num); }
+.hl-cmt { color: var(--cmt); font-style: italic; }
+.hl-meta { color: #7b3fbf; font-weight: 600; }
+.resizer { height: 6px; cursor: row-resize; background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.resizer:hover { background: var(--sel); }
+
+.results { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.rtabs { display: flex; height: 32px; border-bottom: 1px solid var(--line); background: var(--panel-2); padding-left: 4px; align-items: stretch; }
+.rtabs .tab { font-size: 12.5px; }
+.rtabs .tools { margin-left: auto; display: flex; align-items: center; gap: 4px; padding-right: 8px; }
+.rview { display: none; flex: 1; min-height: 0; overflow: auto; }
+.rview.active { display: block; }
+
+.grid { border-collapse: separate; border-spacing: 0; font-size: 12.5px; min-width: 100%; }
+.grid th { position: sticky; top: 0; z-index: 1; background: #f0f3f7; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line-strong);
+           padding: 4px 10px; text-align: left; white-space: nowrap; }
+.grid th .ty { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+.grid th.rn, .grid td.rn { width: 1%; text-align: right; color: var(--muted); background: #f6f8fa; position: sticky; left: 0; }
+.grid th.rn { z-index: 2; }
+.grid td { border-right: 1px solid #e6eaef; border-bottom: 1px solid #e6eaef; padding: 3px 10px; font-family: var(--mono); font-size: 12px;
+           white-space: nowrap; max-width: 560px; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+.grid tr:hover td { background: #f3f7fb; }
+.grid tr.sel td { background: var(--sel); }
+.grid td.empty { color: #a0aab4; font-style: italic; }
+.empty-note { padding: 28px; color: var(--muted); text-align: center; }
+
+.msgs { font: 12.5px/1.6 var(--mono); padding: 10px 14px; white-space: pre-wrap; margin: 0; }
+.msgs .err { color: var(--err); }
+.msgs .ok { color: var(--ok); }
+.msgs .warn { color: var(--warn); }
+.hist-item { padding: 8px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.hist-item:hover { background: #f3f7fb; }
+.hist-item .meta { color: var(--muted); font-size: 11.5px; display: flex; gap: 10px; }
+.hist-item .meta .bad { color: var(--err); }
+.hist-item pre { margin: 4px 0 0; font: 12px/1.45 var(--mono); white-space: pre-wrap; max-height: 60px; overflow: hidden; }
+
+.statusbar { background: #f6f8fa; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 16px; padding: 0 10px; font-size: 12px;
+             color: var(--muted); }
+.statusbar .r { margin-left: auto; display: flex; gap: 16px; }
+.spinner { width: 12px; height: 12px; border: 2px solid #c9d3de; border-top-color: var(--brand); border-radius: 50%; animation: spin .7s linear infinite;
+           display: none; }
+.busy .spinner { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* modal */
+.modal-bg { position: fixed; inset: 0; background: rgba(20,30,45,.35); display: none; align-items: center; justify-content: center; z-index: 50; }
+.modal-bg.show { display: flex; }
+.modal { width: min(760px, 94vw); max-height: 88vh; background: #fff; border-radius: 5px; box-shadow: 0 12px 40px rgba(0,0,0,.25);
+         display: flex; flex-direction: column; }
+.modal header { background: var(--brand); color: #fff; padding: 9px 14px; border-radius: 5px 5px 0 0; display: flex; align-items: center; font-weight: 600; }
+.modal header button { margin-left: auto; background: none; border: 0; color: #fff; font-size: 18px; cursor: pointer; line-height: 1; }
+.modal .mbody { padding: 14px; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+.modal label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.modal input, .modal textarea { width: 100%; font: 12.5px/1.5 var(--mono); border: 1px solid var(--line-strong); border-radius: 3px; padding: 6px 8px; }
+.modal input:focus, .modal textarea:focus { outline: 2px solid var(--sel-line); border-color: var(--brand); }
+.modal textarea { min-height: 220px; resize: vertical; }
+.modal footer { padding: 10px 14px; border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+.modal footer .info { color: var(--muted); font-size: 12px; margin-right: auto; }
+
+.ctxmenu { position: fixed; background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 6px 18px rgba(0,0,0,.15); border-radius: 3px;
+           padding: 4px 0; display: none; z-index: 60; min-width: 190px; }
+.ctxmenu button { display: flex; width: 100%; border: 0; background: none; padding: 6px 14px; text-align: left; cursor: pointer; gap: 8px; align-items: center; }
+.ctxmenu button:hover { background: var(--sel); }
+.ctxmenu svg { width: 14px; height: 14px; }
+
+@media (max-width: 760px) {
+  .work { grid-template-columns: 1fr; }
+  .explorer { display: none; }
+  .menu { display: none; }
+}
+
+/* ---- additions: database picker, table viewer, torture ---- */
+.dbpick { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,.12); border-radius: 4px; padding: 2px 4px 2px 8px; }
+.dbpick label { font-size: 12px; color: #d6e4f0; }
+.dbpick select { font: inherit; font-size: 12.5px; border: 0; border-radius: 3px; padding: 3px 6px; background: #fff; color: var(--text); max-width: 220px; }
+.dbpick button { background: none; border: 0; color: #fff; cursor: pointer; width: 24px; height: 24px; border-radius: 3px; display: grid; place-items: center; }
+.dbpick button:hover { background: rgba(255,255,255,.18); }
+.dbpick svg { width: 14px; height: 14px; }
+.node.dim span:not(.badge) { color: var(--muted); }
+.node.current > span:not(.badge) { font-weight: 600; }
+
+.tv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.tv-bar input[type=search], .tv-bar select, .tf input, .tf select { font: inherit; font-size: 12.5px; border: 1px solid var(--line-strong); border-radius: 3px;
+  padding: 4px 8px; background: #fff; color: var(--text); }
+.tv-bar input[type=search] { width: 240px; }
+.tv-bar .grow { flex: 1; }
+.tv-bar .pager { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+.tv-sql { font: 11.5px/1.5 var(--mono); color: var(--muted); padding: 4px 10px; border-bottom: 1px solid var(--line); background: #fbfcfd;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-body { flex: 1; overflow: auto; min-height: 0; }
+
+.tort { display: grid; grid-template-columns: 330px 1fr; flex: 1; min-height: 0; }
+.tort-side { border-right: 1px solid var(--line); overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; background: #fbfcfd; }
+.tort-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.tf { display: grid; grid-template-columns: 92px 1fr; gap: 8px 10px; align-items: center; }
+.tf input, .tf select { width: 100%; min-width: 0; }
+.tf label { font-size: 12px; color: var(--muted); font-weight: 600; }
+.tf .seedrow { display: flex; gap: 6px; }
+.tf .seedrow input { flex: 1; min-width: 0; }
+.mode-desc { font-size: 12px; color: var(--muted); background: #fff; border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; line-height: 1.5; }
+.cmdline { font: 11.5px/1.5 var(--mono); background: #1f2933; color: #d9e2ec; border-radius: 3px; padding: 8px 10px; word-break: break-all; }
+.cmdline b { color: #7cc4fa; font-weight: 400; }
+.how { font-size: 12.5px; line-height: 1.55; }
+.how ol { margin: 6px 0 0; padding-left: 18px; }
+.how li { margin-bottom: 4px; }
+.how code, .legend code { font: 11.5px var(--mono); background: #eef2f6; padding: 0 4px; border-radius: 2px; }
+.legend { font-size: 12px; line-height: 1.6; color: var(--text); }
+.legend div { display: grid; grid-template-columns: 74px 1fr; gap: 6px; }
+.legend div code { justify-self: start; }
+
+.tstat { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.tstat > div { padding: 10px 12px; border-right: 1px solid var(--line); min-width: 0; }
+.tstat > div:last-child { border-right: 0; }
+.tstat .k { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tstat .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tprog { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
+.tprog .bar { flex: 1; height: 8px; background: #e3e8ee; border-radius: 4px; overflow: hidden; }
+.tprog .bar > div { height: 100%; width: 0; background: var(--brand); transition: width .25s; }
+.tprog .bar.pass > div { background: var(--ok); }
+.tprog .bar.fail > div { background: var(--err); }
+.pill { font-size: 11.5px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #e3e8ee; color: var(--muted); white-space: nowrap; }
+.pill.run { background: #dbe8f5; color: var(--brand-dark); }
+.pill.pass { background: var(--ok-bg); color: var(--ok); }
+.pill.fail { background: var(--err-bg); color: var(--err); }
+.tsplit { flex: 1; display: grid; grid-template-rows: 1fr 190px; min-height: 0; }
+.titers { overflow: auto; min-height: 0; }
+.titers td.res-ok { color: var(--ok); font-weight: 600; }
+.titers td.res-fail { color: var(--err); font-weight: 600; }
+.titers tr.hot td { background: #fff8e1; }
+.viol { margin: 0; padding: 10px 14px; background: var(--err-bg); color: var(--err); font: 12px/1.55 var(--mono); white-space: pre-wrap; border-bottom: 1px solid #f3b8b3; display: none; }
+.console { border-top: 1px solid var(--line-strong); background: #1f2933; color: #d9e2ec; font: 11.5px/1.5 var(--mono); overflow: auto; padding: 6px 10px; margin: 0;
+  white-space: pre; min-height: 0; }
+.console .c-ok { color: #8fd694; }
+.console .c-bad { color: #ff9b9b; }
+.console .c-dim { color: #8a99a8; }
+.oracle-pre { font: 11.5px/1.5 var(--mono); background: #f6f8fa; border: 1px solid var(--line); border-radius: 3px; padding: 8px; max-height: 60vh; overflow: auto; margin: 0; white-space: pre; }
+.oracle-pre .o-ack { color: var(--ok); }
+.oracle-pre .o-pend { color: #b26a00; font-weight: 600; }
+.oracle-pre .o-full { color: var(--err); }
+.oracle-pre .o-note { color: #7b3fbf; }
+
+@media (max-width: 1100px) {
+  .tort { grid-template-columns: 1fr; }
+  .tort-side { max-height: 40vh; border-right: 0; border-bottom: 1px solid var(--line); }
+  .tstat { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+</style>
+</head>
+<body>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-db" viewBox="0 0 16 16"><ellipse cx="8" cy="3.5" rx="5.5" ry="2" fill="#d9e6f2" stroke="#326690"/><path d="M2.5 3.5v9c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2v-9" fill="#d9e6f2" stroke="#326690"/><path d="M2.5 8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2" fill="none" stroke="#326690"/></symbol>
+  <symbol id="i-server" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="5" rx="1" fill="#e6edf4" stroke="#4b5b6b"/><rect x="2" y="9" width="12" height="5" rx="1" fill="#e6edf4" stroke="#4b5b6b"/><circle cx="4.5" cy="4.5" r=".9" fill="#2e7d32"/><circle cx="4.5" cy="11.5" r=".9" fill="#2e7d32"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.5 4a1 1 0 0 1 1-1h3.6l1.4 1.5h6a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" fill="#f4d58d" stroke="#b9902f"/></symbol>
+  <symbol id="i-schema" viewBox="0 0 16 16"><path d="M8 1.5 14 5v6l-6 3.5L2 11V5z" fill="#e5dcf5" stroke="#6b4fa8"/><path d="M2 5l6 3.5L14 5M8 8.5v6" fill="none" stroke="#6b4fa8"/></symbol>
+  <symbol id="i-table" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="#fff" stroke="#326690"/><path d="M1.5 6h13M1.5 9.5h13M6 6v7.5" stroke="#326690"/><rect x="1.5" y="2.5" width="13" height="3.5" fill="#326690"/></symbol>
+  <symbol id="i-col" viewBox="0 0 16 16"><rect x="5" y="1.5" width="6" height="13" rx="1" fill="#e9f1f8" stroke="#5f7a92"/><path d="M5 5h6" stroke="#5f7a92"/></symbol>
+  <symbol id="i-key" viewBox="0 0 16 16"><circle cx="5" cy="8" r="3" fill="#fff3c4" stroke="#b28704"/><path d="M8 8h6.5M12 8v2.5M14 8v2" stroke="#b28704" stroke-width="1.4" fill="none"/></symbol>
+  <symbol id="i-caret" viewBox="0 0 12 12"><path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 12 12"><path d="M2.5 1.5v9l8-4.5z" fill="currentColor"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3.2H9.8" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-query" viewBox="0 0 16 16"><rect x="1.5" y="2" width="13" height="12" rx="1" fill="#fff" stroke="currentColor"/><path d="M4 6l2 2-2 2M7.5 10.5h4" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1" fill="none" stroke="currentColor"/><path d="M1.5 6.5h13M1.5 10h13M6 2.5v11M10.5 2.5v11" stroke="currentColor"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 16 16"><rect x="1.5" y="1.5" width="5.5" height="7" fill="none" stroke="currentColor"/><rect x="9" y="1.5" width="5.5" height="4" fill="none" stroke="currentColor"/><rect x="1.5" y="10.5" width="5.5" height="4" fill="none" stroke="currentColor"/><rect x="9" y="7.5" width="5.5" height="7" fill="none" stroke="currentColor"/></symbol>
+  <symbol id="i-props" viewBox="0 0 16 16"><path d="M2 3.5h12M2 8h12M2 12.5h12" stroke="currentColor" stroke-width="1.4"/><circle cx="5" cy="3.5" r="1.4" fill="#fff" stroke="currentColor"/><circle cx="11" cy="8" r="1.4" fill="#fff" stroke="currentColor"/><circle cx="7" cy="12.5" r="1.4" fill="#fff" stroke="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="i-broom" viewBox="0 0 16 16"><path d="M10.5 1.5 7.5 8M4 8.5h7l1 6H3z" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M3 4.5h10M6 4.5V3h4v1.5M4.5 4.5l.7 9h5.6l.7-9" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="i-clear" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6"/></symbol>
+  <symbol id="i-hist" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 16 16"><path d="M2 3h12v8H6l-3 2.5V11H2z" fill="none" stroke="currentColor" stroke-width="1.3"/></symbol>
+  <symbol id="i-dl" viewBox="0 0 16 16"><path d="M8 2v8M4.5 7 8 10.5 11.5 7M3 13.5h10" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 16 16"><path d="M9.5 1 3 9h4.5L6 15l7-8.5H8.5z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></symbol>
+</svg>
+
+
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 16 16"><ellipse cx="8" cy="3.5" rx="5.5" ry="2" fill="#fff"/><path d="M2.5 3.5v9c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2v-9" fill="#cfe0ee"/><path d="M2.5 8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2" fill="none" stroke="#326690"/></svg>
+    kvdb Admin
+  </div>
+  <div class="dbpick">
+    <label for="dbsel">Database</label>
+    <select id="dbsel"></select>
+    <button title="Create database" data-act="newdb"><svg><use href="#i-plus"/></svg></button>
+  </div>
+  <nav class="menu">
+    <button data-act="dashboard">Dashboard</button>
+    <button data-act="table">Table</button>
+    <button data-act="query">Query Tool</button>
+    <button data-act="torture">Torture</button>
+  </nav>
+  <div class="right"><span class="dot" id="conn-dot"></span><span class="path" id="top-path">connecting…</span></div>
+</header>
+
+<div class="work">
+  <aside class="explorer">
+    <div class="panel-title">Object Explorer
+      <div class="tools">
+        <button class="icon-btn" title="Refresh" data-act="refresh"><svg><use href="#i-refresh"/></svg></button>
+        <button class="icon-btn" title="Create database" data-act="newdb"><svg><use href="#i-plus"/></svg></button>
+        <button class="icon-btn" title="Query Tool" data-act="query"><svg><use href="#i-query"/></svg></button>
+      </div>
+    </div>
+    <div class="tree" id="tree"></div>
+  </aside>
+
+  <section class="main">
+    <div class="tabs" id="main-tabs">
+      <button class="tab active" data-tab="dashboard"><svg><use href="#i-dash"/></svg>Dashboard</button>
+      <button class="tab" data-tab="properties"><svg><use href="#i-props"/></svg>Properties</button>
+      <button class="tab" data-tab="table"><svg><use href="#i-table"/></svg>Table: kv</button>
+      <button class="tab" data-tab="query"><svg><use href="#i-query"/></svg>Query Tool</button>
+      <button class="tab" data-tab="torture"><svg><use href="#i-bolt"/></svg>Torture</button>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="view active" id="view-dashboard">
+      <div class="dash">
+        <div class="cards">
+          <div class="card"><h4>Rows (keys)</h4><div class="v" id="d-keys">–</div><div class="sub">live keys in table kv</div></div>
+          <div class="card"><h4>File size</h4><div class="v" id="d-size">–</div><div class="sub" id="d-size-sub">&nbsp;</div></div>
+          <div class="card"><h4>Reclaimable</h4><div class="v" id="d-dead">–</div><div class="sub" id="d-dead-sub">&nbsp;</div></div>
+          <div class="card"><h4>Disk limit</h4><div class="v" id="d-max">–</div><div class="meter" id="d-meter" hidden><div></div></div><div class="sub" id="d-max-sub">&nbsp;</div></div>
+          <div class="card"><h4>Last recovery</h4><div class="v" id="d-rec">–</div><div class="sub" id="d-rec-sub">&nbsp;</div></div>
+        </div>
+        <div class="box">
+          <h3>Maintenance</h3>
+          <div class="body">
+            <div class="actions">
+              <button class="btn" data-act="check"><svg><use href="#i-check"/></svg>Check integrity</button>
+              <button class="btn" data-act="vacuum"><svg><use href="#i-broom"/></svg>VACUUM (compact file)</button>
+              <button class="btn" data-act="table"><svg><use href="#i-grid"/></svg>View table</button>
+              <button class="btn" data-act="add"><svg><use href="#i-plus"/></svg>Insert row</button>
+            </div>
+            <div class="alert" id="maint-out"></div>
+          </div>
+        </div>
+        <div class="box">
+          <h3>Databases in this folder <span style="font-weight:400;color:var(--muted)" id="d-dir"></span></h3>
+          <table class="plain"><thead><tr><th>Name</th><th style="width:110px">Size</th><th style="width:90px">Rows</th><th style="width:150px">Status</th><th style="width:170px"></th></tr></thead>
+            <tbody id="d-dbs"></tbody></table>
+        </div>
+        <div class="box">
+          <h3>Recent activity</h3>
+          <table class="plain"><thead><tr><th style="width:90px">Time</th><th style="width:110px">Database</th><th style="width:90px">Duration</th><th style="width:70px">Status</th><th>Statement</th></tr></thead>
+            <tbody id="d-activity"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Properties -->
+    <div class="view" id="view-properties">
+      <div class="props"><table class="plain"><tbody id="props-body"></tbody></table></div>
+    </div>
+
+    <!-- Table viewer -->
+    <div class="view" id="view-table">
+      <div class="tv-bar">
+        <input type="search" id="tv-filter" placeholder="Filter keys (e.g. user: or user:%1)" aria-label="Filter keys">
+        <select id="tv-mode" aria-label="Filter column">
+          <option value="key">in key</option>
+          <option value="value">in value</option>
+        </select>
+        <select id="tv-order" aria-label="Order">
+          <option value="ASC">key A→Z</option>
+          <option value="DESC">key Z→A</option>
+        </select>
+        <button class="btn" data-act="add"><svg><use href="#i-plus"/></svg>Insert row</button>
+        <button class="btn" id="tv-refresh"><svg><use href="#i-refresh"/></svg>Refresh</button>
+        <span class="grow"></span>
+        <div class="pager">
+          <select id="tv-size" aria-label="Rows per page"><option>25</option><option selected>50</option><option>100</option><option>500</option></select>
+          <span>rows per page</span>
+          <button class="icon-btn" id="tv-first" title="First page">«</button>
+          <button class="icon-btn" id="tv-prev" title="Previous page">‹</button>
+          <span id="tv-range">–</span>
+          <button class="icon-btn" id="tv-next" title="Next page">›</button>
+          <button class="icon-btn" id="tv-last" title="Last page">»</button>
+        </div>
+      </div>
+      <div class="tv-sql" id="tv-sql"></div>
+      <div class="tv-body" id="tv-body"><div class="empty-note">Loading…</div></div>
+    </div>
+
+    <!-- Query tool -->
+    <div class="view" id="view-query">
+      <div class="qtool">
+        <div class="toolbar">
+          <button class="run" id="run" title="Execute (F5 or Ctrl+Enter). Runs the selection if text is selected."><svg><use href="#i-play"/></svg>Execute</button>
+          <span class="sep"></span>
+          <button class="icon-btn" title="Clear editor" id="clear-ed"><svg><use href="#i-clear"/></svg></button>
+          <button class="icon-btn" title="Insert row" data-act="add"><svg><use href="#i-plus"/></svg></button>
+          <button class="icon-btn" title="Download results as CSV" id="csv"><svg><use href="#i-dl"/></svg></button>
+          <span class="sep"></span>
+          <button class="btn" data-snip="SELECT * FROM kv ORDER BY key LIMIT 100;">SELECT</button>
+          <button class="btn" data-snip="INSERT INTO kv (key, value) VALUES ('key1', 'hello');">INSERT</button>
+          <button class="btn" data-snip="BEGIN;&#10;INSERT INTO kv VALUES ('a', '1'), ('b', '2');&#10;DELETE FROM kv WHERE key = 'old';&#10;COMMIT;">BATCH</button>
+          <button class="btn" data-snip="\d+ kv">\d+ kv</button>
+          <button class="btn" data-snip="\l">\l</button>
+          <button class="btn" data-snip="\?">Help</button>
+          <div class="ctx">table <b>public.kv</b> on <b class="cur-db">…</b></div>
+        </div>
+        <div class="editor-wrap" id="editor-wrap">
+          <div class="gutter" id="gutter"></div>
+          <div class="code">
+            <pre id="hl" aria-hidden="true"></pre>
+            <textarea id="sql" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="SQL editor">SELECT * FROM kv ORDER BY key LIMIT 100;</textarea>
+          </div>
+        </div>
+        <div class="resizer" id="resizer" title="Drag to resize"></div>
+        <div class="results">
+          <div class="rtabs" id="rtabs">
+            <button class="tab active" data-rtab="data"><svg><use href="#i-grid"/></svg>Data Output</button>
+            <button class="tab" data-rtab="messages"><svg><use href="#i-msg"/></svg>Messages</button>
+            <button class="tab" data-rtab="history"><svg><use href="#i-hist"/></svg>Query History</button>
+            <div class="tools"><span class="spinner"></span><span id="r-hint" style="color:var(--muted);font-size:12px">Double-click a row to edit it</span></div>
+          </div>
+          <div class="rview active" id="r-data"><div class="empty-note">Run a query to see rows here. Press <b>F5</b>.</div></div>
+          <div class="rview" id="r-messages"><pre class="msgs" id="msgs"></pre></div>
+          <div class="rview" id="r-history"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Torture -->
+    <div class="view" id="view-torture">
+      <div class="tort">
+        <div class="tort-side">
+          <div class="box">
+            <h3>Run the torture tool</h3>
+            <div class="body" style="display:flex;flex-direction:column;gap:10px">
+              <div class="tf">
+                <label for="t-mode">Mode</label>
+                <select id="t-mode">
+                  <option value="mixed">mixed (default)</option>
+                  <option value="large-values">large-values</option>
+                  <option value="large-batch">large-batch</option>
+                  <option value="compaction">compaction</option>
+                  <option value="recovery-crash">recovery-crash</option>
+                  <option value="disk-full">disk-full</option>
+                  <option value="million">million (1M keys, recovery time)</option>
+                </select>
+                <label for="t-iter">Iterations</label>
+                <input id="t-iter" type="number" min="1" max="100000" value="20">
+                <label for="t-seed">Seed</label>
+                <div class="seedrow"><input id="t-seed" type="number" value="12345"><button class="btn" id="t-rand" title="Random seed">🎲</button></div>
+                <label for="t-writers">Writers</label>
+                <input id="t-writers" type="number" min="2" max="16" value="2">
+              </div>
+              <div class="mode-desc" id="t-desc"></div>
+              <div class="cmdline" id="t-cmd"></div>
+              <div class="actions">
+                <button class="btn primary" id="t-start"><svg><use href="#i-play"/></svg>Start</button>
+                <button class="btn danger" id="t-stop" disabled><svg><use href="#i-clear"/></svg>Stop</button>
+                <button class="btn" id="t-oracle"><svg><use href="#i-hist"/></svg>Oracle log</button>
+                <button class="btn" id="t-opendb" hidden><svg><use href="#i-db"/></svg>Open its database</button>
+              </div>
+            </div>
+          </div>
+          <div class="box">
+            <h3>How one iteration works</h3>
+            <div class="body how">
+              <ol>
+                <li>Start <code>kvdb serve</code> as a child process.</li>
+                <li>Two (or more) writers send random <code>put</code>, <code>del</code> and <code>batch</code> ops at the same time. Some modes add a reader or a compactor.</li>
+                <li>The tool writes down every op it <b>sent</b> and every <code>ACK</code> it got back. That list is the <b>oracle</b>. It never trusts the database.</li>
+                <li>After a random number of ms it kills serve with <b>SIGKILL</b> (TerminateProcess on Windows), usually in the middle of a write.</li>
+                <li>It runs <code>kvdb open</code> (recovery), <code>kvdb check</code> and <code>kvdb dump</code>.</li>
+                <li>It compares the dump with the oracle:
+                  every ACKed write must be there (unless a later ACKed write replaced it), in-flight writes may be there or not,
+                  a batch is all or nothing, and every value must be complete and belong to its key.</li>
+                <li>Any mismatch stops the run and prints what was expected and what was found.</li>
+              </ol>
+            </div>
+          </div>
+          <div class="box">
+            <h3>What the columns mean</h3>
+            <div class="body legend">
+              <div><code>kill@</code><span>when the kill happened, ms after serve was ready</span></div>
+              <div><code>sent</code><span>write ops sent in this iteration</span></div>
+              <div><code>acked</code><span>ops that got ACK, so they must survive</span></div>
+              <div><code>in-flight</code><span>sent, no answer before the kill. Either outcome is legal.</span></div>
+              <div><code>full</code><span>rejected by max_bytes. Must NOT appear.</span></div>
+              <div><code>torn</code><span>bytes of half-written record that open cut off</span></div>
+              <div><code>recovery</code><span>time open took to rebuild the index</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tort-main">
+          <div class="tprog">
+            <span class="pill" id="t-pill">Idle</span>
+            <div class="bar" id="t-bar"><div></div></div>
+            <span id="t-progtext" style="font-size:12px;color:var(--muted);white-space:nowrap">0 / 0</span>
+            <span id="t-elapsed" style="font-size:12px;color:var(--muted);white-space:nowrap"></span>
+          </div>
+          <div class="tstat">
+            <div><div class="k">Acked ops</div><div class="v" id="ts-acked">0</div></div>
+            <div><div class="k">In-flight at kill</div><div class="v" id="ts-inflight">0</div></div>
+            <div><div class="k">Kills mid-write</div><div class="v" id="ts-kmw">0</div></div>
+            <div><div class="k">Torn tails cut</div><div class="v" id="ts-torn">0</div></div>
+            <div><div class="k">Rejected FULL</div><div class="v" id="ts-full">0</div></div>
+            <div><div class="k">Slowest recovery</div><div class="v" id="ts-rec">–</div></div>
+          </div>
+          <pre class="viol" id="t-viol"></pre>
+          <div class="tsplit">
+            <div class="titers">
+              <table class="grid" id="t-table">
+                <thead><tr><th class="rn">#</th><th>kill@<span class="ty">ms</span></th><th>sent<span class="ty">ops</span></th><th>acked<span class="ty">ops</span></th>
+                  <th>in-flight<span class="ty">ops</span></th><th>full<span class="ty">ops</span></th><th>torn<span class="ty">bytes</span></th>
+                  <th>keys<span class="ty">after</span></th><th>file<span class="ty">bytes</span></th><th>recovery<span class="ty">ms</span></th><th>result<span class="ty">oracle</span></th></tr></thead>
+                <tbody id="t-rows"><tr><td class="rn"></td><td colspan="10" class="empty">Press Start. Each finished iteration appears here, newest first.</td></tr></tbody>
+              </table>
+            </div>
+            <pre class="console" id="t-console"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer class="statusbar" id="status">
+  <span id="st-left">Ready</span>
+  <div class="r"><span id="st-rows"></span><span id="st-time"></span><span id="st-pos">Ln 1, Col 1</span></div>
+</footer>
+
+<!-- row editor -->
+<div class="modal-bg" id="modal-bg">
+  <div class="modal" role="dialog" aria-modal="true">
+    <header><span id="m-title">Edit row</span><button id="m-close" aria-label="Close">×</button></header>
+    <div class="mbody">
+      <div><label for="m-key">key (text, 1 to 1024 bytes)</label><input id="m-key"></div>
+      <div><label for="m-val">value (text, up to 1 MB)</label><textarea id="m-val"></textarea></div>
+      <div class="alert" id="m-alert"></div>
+    </div>
+    <footer>
+      <span class="info" id="m-info"></span>
+      <button class="btn danger" id="m-del"><svg><use href="#i-trash"/></svg>Delete row</button>
+      <button class="btn" id="m-cancel">Cancel</button>
+      <button class="btn primary" id="m-save"><svg><use href="#i-check"/></svg>Save</button>
+    </footer>
+  </div>
+</div>
+
+<!-- create database / oracle log -->
+<div class="modal-bg" id="m2-bg">
+  <div class="modal" role="dialog" aria-modal="true">
+    <header><span id="m2-title">Create database</span><button id="m2-close" aria-label="Close">×</button></header>
+    <div class="mbody" id="m2-body"></div>
+    <footer id="m2-foot"></footer>
+  </div>
+</div>
+
+<div class="ctxmenu" id="ctx"></div>
+
+<script>
+(() => {
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const q = s => "'" + String(s).replace(/'/g, "''") + "'";
+function safeGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function safeSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+let cur = safeGet("kvdb-db") || "";   // current database name
+let dbs = [];                         // list from /api/dbs
+let tortureName = "torture_run.db";
+let info = null;
+let lastSelect = "SELECT * FROM kv ORDER BY key LIMIT 100;";
+let lastResult = null;
+let history = [];
+try { history = JSON.parse(safeGet("kvdb-history") || "[]"); } catch (e) { history = []; }
+
+function human(n) {
+  if (n >= 1 << 30) return (n / (1 << 30)).toFixed(2) + " GB";
+  if (n >= 1 << 20) return (n / (1 << 20)).toFixed(2) + " MB";
+  if (n >= 1 << 10) return (n / (1 << 10)).toFixed(1) + " kB";
+  return n + " bytes";
+}
+function dur(ms) {
+  const t = Math.round(ms), h = Math.floor(t / 3600000), m = Math.floor(t / 60000) % 60, s = Math.floor(t / 1000) % 60, x = t % 1000;
+  const p = (v, n = 2) => String(v).padStart(n, "0");
+  return `${p(h)}:${p(m)}:${p(s)}.${p(x, 3)}`;
+}
+async function api(path, body) {
+  const r = await fetch(path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+const withDB = p => p + (p.includes("?") ? "&" : "?") + "db=" + encodeURIComponent(cur);
+
+/* ================= tabs ================= */
+function showTab(name) {
+  $$("#main-tabs .tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+  $$(".main > .view").forEach(v => v.classList.toggle("active", v.id === "view-" + name));
+  if (name === "query") setTimeout(() => $("#sql").focus(), 0);
+  if (name === "table") loadTable();
+  if (name === "torture") pollTorture();
+  safeSet("kvdb-tab", name);
+}
+function showRTab(name) {
+  $$("#rtabs .tab").forEach(t => t.classList.toggle("active", t.dataset.rtab === name));
+  $$(".rview").forEach(v => v.classList.toggle("active", v.id === "r-" + name));
+  if (name === "history") renderHistory();
+}
+$("#main-tabs").addEventListener("click", e => { const t = e.target.closest(".tab"); if (t) showTab(t.dataset.tab); });
+$("#rtabs").addEventListener("click", e => { const t = e.target.closest(".tab"); if (t) showRTab(t.dataset.rtab); });
+
+/* ================= databases ================= */
+async function loadDBs() {
+  try {
+    const r = await api("/api/dbs");
+    dbs = r.databases; tortureName = r.torture;
+    $("#d-dir").textContent = r.dir;
+    if (!cur || !dbs.some(d => d.name === cur)) cur = r.initial;
+  } catch (e) { return; }
+  $("#dbsel").innerHTML = dbs.map(d => `<option value="${esc(d.name)}"${d.name === cur ? " selected" : ""}>${esc(d.torture ? "⚡ " + d.name : d.name)}</option>`).join("");
+  $("#d-dbs").innerHTML = dbs.map(d => `<tr>
+      <td>${d.name === cur ? "<b>" + esc(d.name) + "</b>" : esc(d.name)}${d.torture ? ' <span style="color:var(--muted)">(torture tool)</span>' : ""}</td>
+      <td>${human(d.size)}</td><td>${d.open ? d.keys.toLocaleString() : "–"}</td>
+      <td>${d.name === cur ? '<span style="color:var(--ok)">● connected</span>' : (d.open ? "open" : "closed")}</td>
+      <td>${d.name === cur ? "" : `<button class="btn" data-connect="${esc(d.name)}">Connect</button>`}
+          ${d.name === cur || d.torture ? "" : `<button class="btn danger" data-drop="${esc(d.name)}">Drop</button>`}</td></tr>`).join("");
+  renderTree();
+}
+async function connect(name) {
+  if (name === cur) return;
+  cur = name; safeSet("kvdb-db", cur);
+  lastResult = null; tvPage = 0;
+  $("#r-data").innerHTML = `<div class="empty-note">Connected to <b>${esc(cur)}</b>. Run a query (F5).</div>`;
+  $("#msgs").innerHTML = `You are now connected to database "${esc(cur)}".`;
+  await loadDBs(); await loadInfo();
+  if ($("#view-table").classList.contains("active")) loadTable();
+  $("#st-left").textContent = `Connected to ${cur}`;
+}
+$("#dbsel").addEventListener("change", e => connect(e.target.value));
+document.addEventListener("click", e => {
+  const c = e.target.closest("[data-connect]"); if (c) connect(c.dataset.connect);
+  const d = e.target.closest("[data-drop]"); if (d) confirmDrop(d.dataset.drop);
+});
+
+/* ================= info / dashboard / properties ================= */
+async function loadInfo() {
+  let r;
+  try { r = await api(withDB("/api/info")); $("#conn-dot").classList.remove("off"); }
+  catch (e) {
+    $("#conn-dot").classList.add("off");
+    $("#top-path").textContent = "disconnected: is `kvdb ui` still running?";
+    return;
+  }
+  if (r.error) { $("#top-path").textContent = r.error; return; }
+  info = r;
+  $("#top-path").textContent = info.path; $("#top-path").title = info.path;
+  $$(".cur-db").forEach(e => e.textContent = info.name);
+  $("#d-keys").textContent = info.keys.toLocaleString();
+  $("#d-size").textContent = human(info.size);
+  $("#d-size-sub").textContent = info.size.toLocaleString() + " bytes on disk";
+  $("#d-dead").textContent = human(info.dead);
+  $("#d-dead-sub").textContent = info.size ? `${Math.round(info.dead / Math.max(1, info.live + info.dead) * 100)}% garbage, VACUUM frees it` : "empty file";
+  if (info.maxBytes > 0) {
+    const pct = Math.min(100, info.size / info.maxBytes * 100);
+    $("#d-max").textContent = pct.toFixed(1) + "%";
+    $("#d-meter").hidden = false; $("#d-meter > div").style.width = pct + "%";
+    $("#d-max-sub").textContent = human(info.size) + " of " + human(info.maxBytes);
+  } else {
+    $("#d-max").textContent = "none"; $("#d-meter").hidden = true;
+    $("#d-max-sub").textContent = "start with --max-bytes N to set one";
+  }
+  $("#d-rec").textContent = info.recoveryMs.toFixed(1) + " ms";
+  $("#d-rec-sub").textContent = `${info.records.toLocaleString()} records replayed` +
+    (info.truncatedBytes ? `, ${info.truncatedBytes} torn bytes cut` : ", no torn tail") +
+    (info.removedTemp ? ", leftover compaction file removed" : "");
+  renderProps();
+  updateTreeCounts();
+}
+function renderProps() {
+  const rows = [
+    ["Database", info.name], ["Database file", info.path], ["Folder", info.dir], ["Table", "public.kv"],
+    ["Columns", "key text PRIMARY KEY, value text"], ["Rows", info.keys.toLocaleString()],
+    ["File size", `${human(info.size)} (${info.size.toLocaleString()} bytes)`],
+    ["Live data", human(info.live)], ["Reclaimable by VACUUM", human(info.dead)],
+    ["Max file size", info.maxBytes > 0 ? `${human(info.maxBytes)} (--max-bytes ${info.maxBytes})` : "unlimited"],
+    ["Storage format", "append-only log, one CRC-32C checked record per write"],
+    ["Durability", "every write is fsynced before it returns success"],
+    ["Recovery time at open", info.recoveryMs.toFixed(3) + " ms"],
+    ["Records replayed", info.records.toLocaleString()],
+    ["Torn tail cut at open", info.truncatedBytes ? info.truncatedBytes + " bytes" : "none"],
+    ["Leftover compaction file", info.tempFile ? "present" : (info.removedTemp ? "removed at open" : "none")],
+    ["Server", `http://${info.addr}, pid ${info.pid}, ${info.os}`],
+  ];
+  $("#props-body").innerHTML = rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("");
+}
+
+/* ================= object explorer ================= */
+let treeState = {};
+try { treeState = JSON.parse(safeGet("kvdb-tree") || "{}"); } catch (e) {}
+let selectedNode = "table";
+function renderTree() {
+  const n = (id, icon, label, badge, kids, cls = "") => {
+    const open = treeState[id] !== false;
+    return `<li class="${kids && !open ? "collapsed" : ""}">
+      <div class="node ${cls}${selectedNode === id ? " selected" : ""}" data-id="${esc(id)}" tabindex="0">
+        <svg class="caret ${kids ? (open ? "open" : "") : "none"}"><use href="#i-caret"/></svg>
+        <svg class="ic"><use href="#i-${icon}"/></svg><span>${esc(label)}</span>${badge ? `<span class="badge">${esc(badge)}</span>` : ""}
+      </div>${kids ? `<ul>${kids}</ul>` : ""}</li>`;
+  };
+  const keys = info && info.name === cur ? info.keys.toLocaleString() : "…";
+  const dbNodes = dbs.map(d => {
+    if (d.name !== cur) return n("db:" + d.name, "db", d.name, d.torture ? "(torture)" : "", "", "dim");
+    const cols = n("col-key", "key", "key", "text, PK") + n("col-value", "col", "value", "text");
+    const table = n("table", "table", "kv", `(${keys})`, n("cols", "folder", "Columns", "(2)", cols) + n("idx", "folder", "Indexes", "(1)", n("index", "key", "kv_pkey", "hash, in memory")));
+    const schema = n("schema", "schema", "public", "", n("tables", "folder", "Tables", "(1)", table));
+    return n("db:" + d.name, "db", d.name, "", n("schemas", "folder", "Schemas", "(1)", schema), "current");
+  }).join("");
+  const server = n("server", "server", "local (kvdb)", "", n("dbs", "folder", "Databases", `(${dbs.length})`, dbNodes));
+  $("#tree").innerHTML = `<ul>${n("servers", "server", "Servers", "(1)", server)}</ul>`;
+}
+function updateTreeCounts() {
+  const t = $('#tree .node[data-id="table"] .badge');
+  if (t && info) t.textContent = `(${info.keys.toLocaleString()})`;
+}
+$("#tree").addEventListener("click", e => {
+  const node = e.target.closest(".node"); if (!node) return;
+  const id = node.dataset.id, li = node.parentElement;
+  const hasKids = !!li.querySelector(":scope > ul");
+  if (hasKids && e.target.closest(".caret")) {
+    treeState[id] = li.classList.contains("collapsed");
+    safeSet("kvdb-tree", JSON.stringify(treeState));
+  }
+  selectedNode = id;
+  if (id.startsWith("db:") && id.slice(3) !== cur && !e.target.closest(".caret")) { connect(id.slice(3)); return; }
+  renderTree();
+  if (id === "table" && e.detail === 2) showTab("table");
+});
+$("#tree").addEventListener("contextmenu", e => {
+  const node = e.target.closest(".node"); if (!node) return;
+  e.preventDefault();
+  const id = node.dataset.id;
+  selectedNode = id; renderTree();
+  let items;
+  if (id.startsWith("db:")) {
+    const name = id.slice(3), d = dbs.find(x => x.name === name);
+    items = [[name === cur ? "" : "connect:" + name, "db", "Connect"], ["query", "query", "Query Tool"], ["newdb", "plus", "Create › Database…"],
+             d && !d.torture && name !== cur ? ["drop:" + name, "trash", "Delete/Drop"] : null, ["properties", "props", "Properties…"]];
+  } else {
+    items = [["table", "grid", "View/Edit Data › All Rows"], ["first100", "grid", "View/Edit Data › First 100 Rows"], ["query", "query", "Query Tool"],
+             ["count", "props", "Count Rows"], ["describe", "props", "Describe (\\d+ kv)"], ["vacuum", "broom", "Maintenance › VACUUM"], ["properties", "props", "Properties…"]];
+  }
+  const m = $("#ctx");
+  m.innerHTML = items.filter(x => x && x[0]).map(([a, ic, label]) => `<button data-act="${esc(a)}"><svg><use href="#i-${ic}"/></svg>${esc(label)}</button>`).join("");
+  m.style.display = "block";
+  m.style.left = Math.min(e.clientX, innerWidth - 230) + "px";
+  m.style.top = Math.min(e.clientY, innerHeight - 260) + "px";
+});
+document.addEventListener("click", e => { if (!e.target.closest("#ctx")) $("#ctx").style.display = "none"; });
+
+/* ================= actions ================= */
+async function doAct(act) {
+  $("#ctx").style.display = "none";
+  if (act.startsWith("connect:")) return connect(act.slice(8));
+  if (act.startsWith("drop:")) return confirmDrop(act.slice(5));
+  switch (act) {
+    case "dashboard": case "properties": case "query": case "table": case "torture": showTab(act); break;
+    case "refresh": await loadDBs(); await loadInfo(); break;
+    case "first100": setSQL("SELECT * FROM kv ORDER BY key LIMIT 100;"); showTab("query"); run(); break;
+    case "count": setSQL("SELECT count(*) FROM kv;"); showTab("query"); run(); break;
+    case "describe": setSQL("\\d+ kv"); showTab("query"); run(); break;
+    case "add": openModal(null); break;
+    case "newdb": openCreateDB(); break;
+    case "check": case "vacuum": {
+      const stmt = act === "check" ? "CHECK;" : "VACUUM;";
+      const out = $("#maint-out");
+      out.className = "alert ok"; out.textContent = "Running " + stmt + " …";
+      const r = await exec(stmt);
+      out.className = "alert " + (r.error || (r.messages || []).some(m => m.includes("FAILED")) ? "err" : "ok");
+      out.textContent = [...(r.messages || []), r.error || ""].filter(Boolean).join("\n") + `\n(${r.ms.toFixed(1)} ms on ${cur})`;
+      showTab("dashboard");
+      break;
+    }
+  }
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-act]");
+  if (b) doAct(b.dataset.act);
+  const s = e.target.closest("[data-snip]");
+  if (s) { setSQL(s.dataset.snip); showTab("query"); }
+});
+
+/* ================= editor ================= */
+const ta = $("#sql"), hl = $("#hl"), gutter = $("#gutter");
+const KW = /^(select|from|where|and|or|not|like|ilike|insert|into|values|update|set|delete|begin|commit|rollback|abort|start|transaction|end|vacuum|compact|check|order|by|asc|desc|limit|offset|count|help|create|drop|database|if|exists)$/i;
+function highlight(src) {
+  const re = /('(?:[^']|'')*'?)|(--[^\n]*)|(\\[a-z?]+\+?)|(\b\d+\b)|([A-Za-z_]+)/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(src))) {
+    out += esc(src.slice(last, m.index));
+    const t = m[0];
+    if (m[1]) out += `<span class="hl-str">${esc(t)}</span>`;
+    else if (m[2]) out += `<span class="hl-cmt">${esc(t)}</span>`;
+    else if (m[3]) out += `<span class="hl-meta">${esc(t)}</span>`;
+    else if (m[4]) out += `<span class="hl-num">${t}</span>`;
+    else if (KW.test(t)) out += `<span class="hl-kw">${esc(t)}</span>`;
+    else out += esc(t);
+    last = re.lastIndex;
+  }
+  return out + esc(src.slice(last)) + "\n";
+}
+function syncEditor() {
+  hl.innerHTML = highlight(ta.value);
+  const lines = ta.value.split("\n").length;
+  const curLines = ta.value.slice(0, ta.selectionStart).split("\n");
+  const ln = curLines.length;
+  let g = "";
+  for (let i = 1; i <= lines; i++) g += `<div${i === ln ? ' class="cur"' : ""}>${i}</div>`;
+  gutter.innerHTML = g;
+  syncScroll();
+  $("#st-pos").textContent = `Ln ${ln}, Col ${curLines[curLines.length - 1].length + 1}`;
+  safeSet("kvdb-editor", ta.value);
+}
+function syncScroll() { hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; gutter.scrollTop = ta.scrollTop; }
+function setSQL(s) { ta.value = s; syncEditor(); }
+["input", "keyup", "click"].forEach(ev => ta.addEventListener(ev, syncEditor));
+ta.addEventListener("scroll", syncScroll);
+ta.addEventListener("keydown", e => {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const s = ta.selectionStart, en = ta.selectionEnd;
+    ta.value = ta.value.slice(0, s) + "  " + ta.value.slice(en);
+    ta.selectionStart = ta.selectionEnd = s + 2; syncEditor();
+  }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "F5" || ((e.ctrlKey || e.metaKey) && e.key === "Enter")) {
+    if ($(".modal-bg.show")) return;
+    e.preventDefault(); showTab("query"); run();
+  }
+  if (e.key === "Escape") { closeModal(); closeM2(); $("#ctx").style.display = "none"; }
+});
+$("#clear-ed").addEventListener("click", () => { setSQL(""); ta.focus(); });
+$("#run").addEventListener("click", () => run());
+const saved = safeGet("kvdb-editor");
+if (saved) ta.value = saved;
+syncEditor();
+(() => {
+  const wrap = $("#editor-wrap"); let y0 = 0, h0 = 0;
+  const move = e => { wrap.style.height = Math.max(90, Math.min(innerHeight - 260, h0 + e.clientY - y0)) + "px"; };
+  const up = () => { removeEventListener("mousemove", move); removeEventListener("mouseup", up); document.body.style.userSelect = ""; };
+  $("#resizer").addEventListener("mousedown", e => {
+    y0 = e.clientY; h0 = wrap.offsetHeight; document.body.style.userSelect = "none";
+    addEventListener("mousemove", move); addEventListener("mouseup", up);
+  });
+})();
+
+/* ================= running SQL ================= */
+async function exec(sql, opts = {}) {
+  const t0 = performance.now();
+  let r;
+  try { r = await api("/api/query", { sql, db: cur }); }
+  catch (e) { r = { error: "ERROR:  cannot reach kvdb ui: " + e.message, messages: [], ms: performance.now() - t0 }; }
+  if (!opts.quiet) {
+    history.unshift({ sql, db: cur, at: Date.now(), ms: r.ms, ok: !r.error, rows: r.hasRows ? r.rows.length : null });
+    history = history.slice(0, 100);
+    safeSet("kvdb-history", JSON.stringify(history));
+    renderActivity();
+  }
+  if (r.database && r.database !== cur) { await connect(r.database); }
+  else if (r.catalog) { await loadDBs(); }
+  if (r.wrote) { loadInfo(); loadDBs(); }
+  return r;
+}
+async function run() {
+  const sel = ta.value.slice(ta.selectionStart, ta.selectionEnd);
+  const sql = (sel.trim() ? sel : ta.value).trim();
+  if (!sql) return;
+  const btn = $("#run");
+  btn.disabled = true; document.body.classList.add("busy");
+  $("#st-left").textContent = "Waiting for the query to complete…";
+  const r = await exec(sql);
+  btn.disabled = false; document.body.classList.remove("busy");
+  const lines = [];
+  (r.messages || []).forEach(m => lines.push(`<span class="${/^(WARNING|NOTICE)/.test(m) ? "warn" : ""}">${esc(m)}</span>`));
+  if (r.error) lines.push(`<span class="err">${esc(r.error)}</span>`);
+  else lines.push(`<span class="ok">\nQuery returned successfully in ${Math.round(r.ms)} msec.</span>`);
+  $("#msgs").innerHTML = lines.join("\n");
+  if (r.hasRows && !r.error) {
+    lastResult = r;
+    if (/^\s*select\b/i.test(sql.split(";").filter(s => s.trim()).pop() || "")) lastSelect = sql;
+    renderGrid($("#r-data"), r, true);
+    // describe commands carry extra lines in Messages (indexes, storage)
+    showRTab("data");
+    $("#st-rows").textContent = `Total rows: ${r.rows.length}${r.truncated ? "+" : ""}`;
+  } else {
+    showRTab("messages");
+    $("#st-rows").textContent = "";
+    if (r.wrote && !r.error) refreshGridQuietly();
+  }
+  $("#st-time").textContent = (r.error ? "Query failed " : "Query complete ") + dur(r.ms);
+  $("#st-left").textContent = r.error ? r.error.replace(/^ERROR:\s*/, "Error: ") :
+    ((r.messages || []).length > 1 && r.hasRows ? "See the Messages tab for more details" : "Ready");
+}
+async function refreshGridQuietly() {
+  if (!lastResult || !/^\s*select/i.test(lastSelect)) return;
+  const r = await api("/api/query", { sql: lastSelect, db: cur });
+  if (r.hasRows && !r.error) { lastResult = r; renderGrid($("#r-data"), r, true); }
+}
+function renderGrid(el, r, numbered, startNum = 0) {
+  if (!r.columns || !r.columns.length) { el.innerHTML = `<div class="empty-note">No columns.</div>`; return; }
+  const editable = r.columns[0] === "key" && r.columns.length <= 2 && r.types[0] === "text";
+  el.dataset.editable = editable ? "1" : "";
+  if (el.id === "r-data") $("#r-hint").textContent = editable ? "Double-click a row to edit it" : "";
+  let h = `<table class="grid"><thead><tr><th class="rn"></th>${r.columns.map((c, i) =>
+    `<th>${esc(c)}${c === "key" && editable ? " 🔑" : ""}<span class="ty">${esc(r.types[i] || "text")}</span></th>`).join("")}</tr></thead><tbody>`;
+  if (!(r.rows || []).length) h += `<tr><td class="rn"></td><td colspan="${r.columns.length}" class="empty">(0 rows)</td></tr>`;
+  (r.rows || []).forEach((row, i) => {
+    h += `<tr data-i="${i}"><td class="rn">${startNum + i + 1}</td>${row.map(v =>
+      v === "" ? `<td class="empty">[empty]</td>` : `<td title="${esc(v.length > 300 ? v.slice(0, 300) + "…" : v)}">${esc(v)}</td>`).join("")}</tr>`;
+  });
+  el.innerHTML = h + "</tbody></table>";
+}
+function gridEvents(el, getRows) {
+  el.addEventListener("click", e => {
+    const tr = e.target.closest("tr[data-i]"); if (!tr) return;
+    $$("tr.sel", el).forEach(x => x.classList.remove("sel")); tr.classList.add("sel");
+  });
+  el.addEventListener("dblclick", e => {
+    const tr = e.target.closest("tr[data-i]");
+    if (!tr || !el.dataset.editable) return;
+    openModal(getRows()[+tr.dataset.i][0]);
+  });
+}
+gridEvents($("#r-data"), () => lastResult.rows);
+$("#csv").addEventListener("click", () => {
+  if (!lastResult) return;
+  const cell = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  const csv = [lastResult.columns, ...lastResult.rows].map(r => r.map(cell).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = cur.replace(/\.db$/, "") + "-result.csv"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+/* ================= history / activity ================= */
+function renderHistory() {
+  const el = $("#r-history");
+  if (!history.length) { el.innerHTML = `<div class="empty-note">No queries yet.</div>`; return; }
+  el.innerHTML = history.map((h, i) => `<div class="hist-item" data-h="${i}">
+    <div class="meta"><span>${new Date(h.at).toLocaleTimeString()}</span><span>${esc(h.db || "")}</span><span>${h.ms.toFixed(1)} ms</span>
+    <span class="${h.ok ? "" : "bad"}">${h.ok ? (h.rows != null ? h.rows + " rows" : "OK") : "failed"}</span></div>
+    <pre>${esc(h.sql)}</pre></div>`).join("");
+}
+$("#r-history").addEventListener("click", e => {
+  const it = e.target.closest("[data-h]"); if (!it) return;
+  setSQL(history[+it.dataset.h].sql); ta.focus();
+});
+function renderActivity() {
+  const rows = history.slice(0, 10);
+  $("#d-activity").innerHTML = rows.length ? rows.map(h => `<tr><td>${new Date(h.at).toLocaleTimeString()}</td><td>${esc(h.db || "")}</td><td>${h.ms.toFixed(1)} ms</td>
+    <td style="color:${h.ok ? "var(--ok)" : "var(--err)"}">${h.ok ? "OK" : "Error"}</td><td class="mono">${esc(h.sql.replace(/\s+/g, " "))}</td></tr>`).join("")
+    : `<tr><td colspan="5" style="color:var(--muted)">No queries yet.</td></tr>`;
+}
+renderActivity();
+
+/* ================= table viewer ================= */
+let tvPage = 0, tvTotal = 0, tvRows = [], tvTimer = null;
+function tvWhere() {
+  const f = $("#tv-filter").value.trim();
+  if (!f) return "";
+  const col = $("#tv-mode").value;
+  const pat = /[%_]/.test(f) ? f : "%" + f + "%";
+  return ` WHERE ${col} LIKE ${q(pat)}`;
+}
+async function loadTable() {
+  const size = +$("#tv-size").value, where = tvWhere(), order = $("#tv-order").value;
+  const c = await api("/api/query", { sql: `SELECT count(*) FROM kv${where};`, db: cur });
+  if (c.error) { $("#tv-body").innerHTML = `<div class="empty-note" style="color:var(--err)">${esc(c.error)}</div>`; return; }
+  tvTotal = +c.rows[0][0];
+  const pages = Math.max(1, Math.ceil(tvTotal / size));
+  if (tvPage >= pages) tvPage = pages - 1;
+  const sql = `SELECT * FROM kv${where} ORDER BY key ${order} LIMIT ${size} OFFSET ${tvPage * size};`;
+  $("#tv-sql").textContent = sql;
+  const r = await api("/api/query", { sql, db: cur });
+  if (r.error) { $("#tv-body").innerHTML = `<div class="empty-note" style="color:var(--err)">${esc(r.error)}</div>`; return; }
+  tvRows = r.rows;
+  renderGrid($("#tv-body"), r, true, tvPage * size);
+  const from = tvTotal ? tvPage * size + 1 : 0, to = tvPage * size + r.rows.length;
+  $("#tv-range").textContent = `${from.toLocaleString()}–${to.toLocaleString()} of ${tvTotal.toLocaleString()}`;
+  $("#tv-first").disabled = $("#tv-prev").disabled = tvPage === 0;
+  $("#tv-next").disabled = $("#tv-last").disabled = tvPage >= pages - 1;
+}
+gridEvents($("#tv-body"), () => tvRows);
+$("#tv-filter").addEventListener("input", () => { clearTimeout(tvTimer); tvTimer = setTimeout(() => { tvPage = 0; loadTable(); }, 250); });
+["tv-mode", "tv-order", "tv-size"].forEach(id => $("#" + id).addEventListener("change", () => { tvPage = 0; loadTable(); }));
+$("#tv-refresh").addEventListener("click", loadTable);
+$("#tv-first").addEventListener("click", () => { tvPage = 0; loadTable(); });
+$("#tv-prev").addEventListener("click", () => { tvPage = Math.max(0, tvPage - 1); loadTable(); });
+$("#tv-next").addEventListener("click", () => { tvPage++; loadTable(); });
+$("#tv-last").addEventListener("click", () => { tvPage = Math.max(0, Math.ceil(tvTotal / +$("#tv-size").value) - 1); loadTable(); });
+
+/* ================= row editor ================= */
+let editingKey = null;
+async function openModal(key) {
+  editingKey = key;
+  $("#m-alert").className = "alert";
+  $("#m-title").textContent = key == null ? `Insert row into ${cur} › public.kv` : `Edit row in ${cur}`;
+  $("#m-del").style.display = key == null ? "none" : "";
+  $("#m-key").value = key ?? ""; $("#m-val").value = ""; $("#m-info").textContent = "";
+  $("#modal-bg").classList.add("show");
+  if (key != null) {
+    $("#m-val").value = "loading…";
+    const r = await api(withDB("/api/get?key=" + encodeURIComponent(key)));
+    $("#m-val").value = r.found ? r.value : "";
+    $("#m-info").textContent = r.found ? `${human(r.length)} value` : "row no longer exists";
+    $("#m-val").focus();
+  } else $("#m-key").focus();
+}
+function closeModal() { $("#modal-bg").classList.remove("show"); }
+$("#m-close").addEventListener("click", closeModal);
+$("#m-cancel").addEventListener("click", closeModal);
+$("#modal-bg").addEventListener("click", e => { if (e.target.id === "modal-bg") closeModal(); });
+async function modalExec(sql) {
+  const r = await exec(sql);
+  if (r.error) { $("#m-alert").className = "alert err"; $("#m-alert").textContent = r.error; return; }
+  closeModal();
+  $("#msgs").innerHTML = (r.messages || []).map(esc).join("\n") + `\n<span class="ok">Query returned successfully in ${Math.round(r.ms)} msec.</span>`;
+  $("#st-left").textContent = (r.messages || []).join("; ") + " (fsynced)";
+  refreshGridQuietly();
+  if ($("#view-table").classList.contains("active")) loadTable();
+}
+$("#m-save").addEventListener("click", () => {
+  const k = $("#m-key").value, v = $("#m-val").value;
+  if (!k) { $("#m-alert").className = "alert err"; $("#m-alert").textContent = "ERROR:  key must not be empty"; return; }
+  if (editingKey != null && k !== editingKey)
+    modalExec(`BEGIN;\nDELETE FROM kv WHERE key = ${q(editingKey)};\nINSERT INTO kv VALUES (${q(k)}, ${q(v)});\nCOMMIT;`);
+  else modalExec(`INSERT INTO kv VALUES (${q(k)}, ${q(v)});`);
+});
+$("#m-del").addEventListener("click", () => modalExec(`DELETE FROM kv WHERE key = ${q(editingKey)};`));
+
+/* ================= second modal: create / drop / oracle ================= */
+function openM2(title, body, foot) {
+  $("#m2-title").textContent = title; $("#m2-body").innerHTML = body; $("#m2-foot").innerHTML = foot;
+  $("#m2-bg").classList.add("show");
+}
+function closeM2() { $("#m2-bg").classList.remove("show"); }
+$("#m2-close").addEventListener("click", closeM2);
+$("#m2-bg").addEventListener("click", e => { if (e.target.id === "m2-bg" || e.target.closest("[data-m2close]")) closeM2(); });
+function openCreateDB() {
+  openM2("Create database",
+    `<div><label for="nd-name">Name</label><input id="nd-name" placeholder="e.g. shop" autocomplete="off"></div>
+     <div style="font-size:12px;color:var(--muted)">Creates <code>&lt;name&gt;.db</code> in ${esc(info ? info.dir : "the folder")}. Same as running <code>CREATE DATABASE name;</code></div>
+     <div class="alert" id="nd-alert"></div>`,
+    `<span class="info"></span><button class="btn" data-m2close>Cancel</button><button class="btn primary" id="nd-ok">Create and connect</button>`);
+  setTimeout(() => $("#nd-name").focus(), 0);
+  const go = async () => {
+    const name = $("#nd-name").value.trim();
+    if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(name)) { $("#nd-alert").className = "alert err"; $("#nd-alert").textContent = "Use letters, digits, _ . - only."; return; }
+    const r = await exec(`CREATE DATABASE ${q(name)};`);
+    if (r.error) { $("#nd-alert").className = "alert err"; $("#nd-alert").textContent = r.error; return; }
+    closeM2();
+    await loadDBs();
+    connect(name.includes(".") ? name : name + ".db");
+  };
+  $("#nd-ok").addEventListener("click", go);
+  $("#nd-name").addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+}
+function confirmDrop(name) {
+  openM2("Drop database",
+    `<div>Delete <b>${esc(name)}</b> and its file? This cannot be undone.</div><div class="alert" id="dd-alert"></div>`,
+    `<span class="info">Same as <code>DROP DATABASE ${esc(q(name))};</code></span><button class="btn" data-m2close>Cancel</button><button class="btn primary" id="dd-ok" style="background:var(--err);border-color:var(--err)">Drop</button>`);
+  $("#dd-ok").addEventListener("click", async () => {
+    const r = await exec(`DROP DATABASE ${q(name)};`);
+    if (r.error) { $("#dd-alert").className = "alert err"; $("#dd-alert").textContent = r.error; return; }
+    closeM2(); loadDBs();
+  });
+}
+
+/* ================= torture ================= */
+const MODES = {
+  "mixed": "Puts, deletes and batches (2–40 ops) from the writers on 300 shared keys, plus a reader that checks every get returns a complete value. Kill after 1–400 ms.",
+  "large-values": "80% of values are 256 KB–1 MB (half exactly 1 MB), so kills land in the middle of big writes. Kill after 5–1500 ms.",
+  "large-batch": "Batches of 5,000–10,000 ops. Checks a killed batch is never half visible. Kill after 20–1500 ms.",
+  "compaction": "A third client sends VACUUM/compact every 0–20 ms while writers overwrite and delete 60 keys. Kills land inside compaction (temp file, rename).",
+  "recovery-crash": "Preloads 30,000 keys. After each kill it starts kvdb open and kills it too, 1–3 times, in the middle of recovery. Then opens for real.",
+  "disk-full": "Runs with --max-bytes 262144. Many writes are rejected with FULL; those must never show up after a crash.",
+  "million": "Writes 1,000,000 keys, kills, and times recovery. Must be under 2 seconds. Iterations are ignored.",
+};
+let tNext = 0, tRunId = -1, tTimer = null, tRows = [], tTotal = 0;
+let tTotals = { acked: 0, inflight: 0, kmw: 0, torn: 0, full: 0, rec: 0 };
+function resetTortureView() {
+  tRows = []; tTotals = { acked: 0, inflight: 0, kmw: 0, torn: 0, full: 0, rec: 0 };
+  $("#t-rows").innerHTML = ""; $("#t-console").innerHTML = ""; $("#t-viol").style.display = "none"; $("#t-viol").textContent = "";
+  updateTStats();
+}
+function cmdPreview() {
+  const m = $("#t-mode").value, exe = (info && info.os || "").startsWith("windows") ? "bin\\torture" : "bin/torture";
+  $("#t-desc").textContent = MODES[m];
+  $("#t-cmd").innerHTML = `<b>&gt;</b> ${exe} --iterations ${esc($("#t-iter").value)} --seed ${esc($("#t-seed").value)} --mode ${esc(m)} --writers ${esc($("#t-writers").value)}`;
+  $("#t-iter").disabled = m === "million";
+}
+["t-mode", "t-iter", "t-seed", "t-writers"].forEach(id => $("#" + id).addEventListener("input", cmdPreview));
+$("#t-rand").addEventListener("click", () => { $("#t-seed").value = Math.floor(Math.random() * 1e9); cmdPreview(); });
+$("#t-start").addEventListener("click", async () => {
+  const body = { mode: $("#t-mode").value, iterations: +$("#t-iter").value, seed: +$("#t-seed").value, writers: +$("#t-writers").value };
+  const r = await api("/api/torture/start", body);
+  if (r.error) { $("#t-console").innerHTML = `<span class="c-bad">${esc(r.error)}</span>`; return; }
+  if (cur === tortureName) { await connect(dbs.find(d => !d.torture)?.name || cur); }
+  tNext = 0; tTotal = body.mode === "million" ? 1 : body.iterations; resetTortureView();
+  $("#t-opendb").hidden = true;
+  pollTorture();
+});
+$("#t-stop").addEventListener("click", () => api("/api/torture/stop", {}));
+$("#t-opendb").addEventListener("click", async () => { await loadDBs(); await connect(tortureName); $("#tv-filter").value = ""; showTab("table"); });
+$("#t-oracle").addEventListener("click", async () => {
+  const r = await api("/api/torture/oracle");
+  const lines = (r.text || r.error || "").split("\n").slice(-400).map(l => {
+    const e = esc(l);
+    if (/\bPENDING\b/.test(l)) return `<span class="o-pend">${e}</span>`;
+    if (/\bACKED\b/.test(l)) return `<span class="o-ack">${e}</span>`;
+    if (/ERR-FULL|\bERR\b/.test(l)) return `<span class="o-full">${e}</span>`;
+    if (/NOTE/.test(l)) return `<span class="o-note">${e}</span>`;
+    return e;
+  }).join("\n");
+  openM2("Oracle log (last 400 lines)",
+    `<div style="font-size:12px;color:var(--muted)">The torture tool's own record of every op: <b>SEND</b> when it was written to serve's stdin,
+      <span style="color:var(--ok)">ACKED</span> when the ACK came back, <span style="color:#b26a00">PENDING</span> = in flight at the kill
+      (allowed either way), <span style="color:var(--err)">ERR-FULL</span> = rejected (must not appear). <code>t=</code> is the event clock used to
+      prove ordering. NOTE lines summarise each iteration.</div><pre class="oracle-pre" id="oracle-pre">${lines}</pre>`,
+    `<span class="info">${r.size ? human(r.size) + " in total" : ""}</span><button class="btn" data-m2close>Close</button>`);
+  const p = $("#oracle-pre"); p.scrollTop = p.scrollHeight;
+});
+
+const ITER_RE = /^\[\s*(\d+)\/(\d+)\]\s+kill@\s*(\d+)ms\s+sent=(\d+)\s+acked=(\d+)\s+inflight=(\d+)\s+full=(\d+)\s+err=(\d+)\s+torn=(\d+)\s+keys=(\d+)\s+file=(\d+)\s+recovery=([\d.]+)ms(.*?)\s+(OK|FAIL.*)$/;
+function handleTLine(line) {
+  const m = line.match(ITER_RE);
+  if (m) {
+    const it = { n: +m[1], total: +m[2], kill: +m[3], sent: +m[4], acked: +m[5], inflight: +m[6], full: +m[7], err: +m[8],
+                 torn: +m[9], keys: +m[10], file: +m[11], rec: +m[12], extra: m[13].trim(), res: m[14] };
+    tTotal = it.total; tRows.push(it);
+    tTotals.acked += it.acked; tTotals.inflight += it.inflight; if (it.inflight > 0) tTotals.kmw++;
+    if (it.torn > 0) tTotals.torn++; tTotals.full += it.full; tTotals.rec = Math.max(tTotals.rec, it.rec);
+    const ok = it.res === "OK";
+    const tr = document.createElement("tr");
+    if (it.torn > 0) tr.className = "hot";
+    tr.title = it.torn > 0 ? "The kill landed in the middle of writing a record; open cut the torn bytes off." : "";
+    tr.innerHTML = `<td class="rn">${it.n}</td><td>${it.kill}</td><td>${it.sent}</td><td>${it.acked}</td><td>${it.inflight}</td><td>${it.full}</td>
+      <td>${it.torn}</td><td>${it.keys.toLocaleString()}</td><td>${it.file.toLocaleString()}</td><td>${it.rec.toFixed(1)}</td>
+      <td class="${ok ? "res-ok" : "res-fail"}">${ok ? "OK" : "FAIL"}</td>`;
+    $("#t-rows").prepend(tr);
+    while ($("#t-rows").children.length > 300) $("#t-rows").lastElementChild.remove();
+  }
+  const mm = line.match(/recovery time: ([\d.]+)ms/);
+  if (mm) tTotals.rec = Math.max(tTotals.rec, +mm[1]);
+  if (/^\s+-\s/.test(line) || /^INVARIANT VIOLATED/.test(line)) {
+    const v = $("#t-viol"); v.style.display = "block"; v.textContent += line + "\n";
+  }
+  const cls = /RESULT: PASS|^\s*OK|PASS/.test(line) ? "c-ok" : /FAIL|ERROR|VIOLATED|^\s+-\s/.test(line) ? "c-bad" : m ? "" : "c-dim";
+  const c = $("#t-console");
+  const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 30;
+  c.insertAdjacentHTML("beforeend", `<span class="${cls}">${esc(line)}</span>\n`);
+  while (c.childNodes.length > 4000) c.removeChild(c.firstChild);
+  if (atBottom) c.scrollTop = c.scrollHeight;
+}
+function updateTStats() {
+  $("#ts-acked").textContent = tTotals.acked.toLocaleString();
+  $("#ts-inflight").textContent = tTotals.inflight.toLocaleString();
+  $("#ts-kmw").textContent = `${tTotals.kmw}/${tRows.length}`;
+  $("#ts-torn").textContent = tTotals.torn;
+  $("#ts-full").textContent = tTotals.full.toLocaleString();
+  $("#ts-rec").textContent = tTotals.rec ? tTotals.rec.toFixed(1) + " ms" : "–";
+}
+async function pollTorture() {
+  clearTimeout(tTimer);
+  let r;
+  try { r = await api("/api/torture/status?since=" + tNext); } catch (e) { tTimer = setTimeout(pollTorture, 2000); return; }
+  if (r.runId !== tRunId) {
+    // a different run than the one we have on screen: start over
+    if (tRunId !== -1 || r.started) { tRunId = r.runId; tNext = 0; resetTortureView(); if (r.next) { tTimer = setTimeout(pollTorture, 0); return; } }
+  }
+  (r.lines || []).forEach(handleTLine);
+  tNext = r.next;
+  updateTStats();
+  const done = tRows.length, failed = tRows.some(x => x.res !== "OK") || /FAIL/.test($("#t-console").textContent.slice(-400));
+  const passed = !r.running && r.started && r.exitCode === 0;
+  const pill = $("#t-pill"), bar = $("#t-bar");
+  bar.className = "bar";
+  if (r.running) { pill.className = "pill run"; pill.textContent = "Running"; }
+  else if (!r.started) { pill.className = "pill"; pill.textContent = "Idle"; }
+  else if (passed) { pill.className = "pill pass"; pill.textContent = "PASS"; bar.classList.add("pass"); }
+  else if (r.exitMsg === "stopped by user") { pill.className = "pill"; pill.textContent = "Stopped"; }
+  else { pill.className = "pill fail"; pill.textContent = failed ? "FAIL" : "Error"; bar.classList.add("fail"); }
+  const pct = tTotal ? Math.min(100, done / tTotal * 100) : 0;
+  $("#t-bar > div").style.width = (passed ? 100 : pct) + "%";
+  $("#t-progtext").textContent = `${done} / ${tTotal || "?"} iterations`;
+  $("#t-elapsed").textContent = r.started ? (r.elapsedMs / 1000).toFixed(1) + " s" : "";
+  if (r.command) $("#t-cmd").innerHTML = `<b>&gt;</b> ${esc(r.command)}`;
+  $("#t-start").disabled = r.running; $("#t-stop").disabled = !r.running;
+  $("#t-opendb").hidden = r.running || !r.started;
+  if (r.running) tTimer = setTimeout(pollTorture, 400);
+  else if (r.started) loadDBs();
+}
+
+/* ================= start ================= */
+(async () => {
+  cmdPreview();
+  await loadDBs();
+  await loadInfo();
+  renderTree();
+  const tab = safeGet("kvdb-tab");
+  if (tab && $("#view-" + tab)) showTab(tab);
+  pollTorture();
+  setInterval(() => { loadInfo(); }, 5000);
+})();
+})();
+</script>
+</body>
+</html>
