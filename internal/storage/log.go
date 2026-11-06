@@ -2,130 +2,146 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
+// ErrBroken means a failed write could not be rolled back, so the file may end
+// in a partial frame. The database refuses further writes until it is reopened
+// (reopening runs recovery, which cuts the partial frame off).
+var ErrBroken = errors.New("log is in an unknown state after a failed write; reopen the database")
+
+// Log is the single data file. It only ever grows by whole frames at the end,
+// except for Truncate during recovery or rollback.
 type Log struct {
-	file      *os.File
-	endOffset int64
-	closed    bool
+	file *os.File
+	path string
+	size int64
 }
 
+// OpenLog opens (or creates) the data file and makes sure it has a valid
+// header. It does NOT scan frames; that is recovery's job.
 func OpenLog(path string) (*Log, error) {
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
 	}
-
-	info, err := file.Stat()
+	info, err := f.Stat()
 	if err != nil {
-		file.Close()
+		f.Close()
 		return nil, err
 	}
+	l := &Log{file: f, path: path, size: info.Size()}
 
-	return &Log{
-		file:      file,
-		endOffset: info.Size(),
-	}, nil
+	needInit := false
+	switch {
+	case l.size < FileHeaderSize:
+		// Brand new file, or we crashed while writing the very first header.
+		// No frame can exist yet, so nothing that was ACKed is lost.
+		needInit = true
+	case l.size == FileHeaderSize && ReadHeader(f) != nil:
+		// Same situation: header bytes landed but were not all correct.
+		needInit = true
+	default:
+		if err := ReadHeader(f); err != nil {
+			f.Close()
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+	}
+
+	if needInit {
+		if err := l.writeHeader(); err != nil {
+			f.Close()
+			return nil, err
+		}
+	}
+	return l, nil
 }
 
-// Append writes a record and returns its starting offset.
-func (l *Log) Append(record []byte) (int64, error) {
-	if l.closed {
-		return 0, errors.New("log is closed")
+func (l *Log) writeHeader() error {
+	if err := l.file.Truncate(0); err != nil {
+		return err
 	}
-
-	start := l.endOffset
-	written := 0
-
-	for written < len(record) {
-		n, err := l.file.WriteAt(record[written:], start+int64(written))
-		written += n
-
-		if err != nil {
-			l.file.Truncate(start)
-			return 0, err
-		}
-
-		if n == 0 {
-			l.file.Truncate(start)
-			return 0, io.ErrShortWrite
-		}
+	if _, err := l.file.WriteAt(EncodeHeader(), 0); err != nil {
+		return err
 	}
-
 	if err := l.file.Sync(); err != nil {
-		l.file.Truncate(start)
-		l.file.Sync()
+		return err
+	}
+	l.size = FileHeaderSize
+	// The file itself may be new: fsync the directory so its entry survives
+	// power loss (process kills do not need this, but it is cheap).
+	return SyncDir(filepath.Dir(l.path))
+}
+
+// File exposes the underlying file for scanning.
+func (l *Log) File() *os.File { return l.file }
+
+// Size is the logical end of the log (offset where the next frame goes).
+func (l *Log) Size() int64 { return l.size }
+
+// Append writes one frame at the end of the file and fsyncs it.
+// Only when this returns nil is the frame durable.
+//
+// Order: (1) pwrite frame at offset size, (2) fsync, (3) advance size.
+// If (1) or (2) fails we truncate back to the old size so the file still ends
+// on a frame boundary.
+func (l *Log) Append(frame []byte) (int64, error) {
+	start := l.size
+	n, err := l.file.WriteAt(frame, start)
+	if err == nil && n != len(frame) {
+		err = io.ErrShortWrite
+	}
+	if err == nil {
+		err = l.file.Sync()
+	}
+	if err != nil {
+		if terr := l.file.Truncate(start); terr != nil {
+			return 0, fmt.Errorf("%w (write error: %v, truncate error: %v)", ErrBroken, err, terr)
+		}
+		if serr := l.file.Sync(); serr != nil {
+			return 0, fmt.Errorf("%w (write error: %v, sync error: %v)", ErrBroken, err, serr)
+		}
 		return 0, err
 	}
-
-	l.endOffset += int64(len(record))
+	l.size = start + int64(len(frame))
 	return start, nil
 }
 
-// Read reads data from a particular offset.
-func (l *Log) Read(offset int64, size int) ([]byte, error) {
-	if l.closed {
-		return nil, errors.New("log is closed")
+// ReadAt reads n bytes at offset.
+func (l *Log) ReadAt(offset int64, n int) ([]byte, error) {
+	buf := make([]byte, n)
+	if n == 0 {
+		return buf, nil
 	}
-
-	if size < 0 || offset < 0 {
-		return nil, errors.New("invalid read position or size")
-	}
-
-	data := make([]byte, size)
-
-	_, err := l.file.ReadAt(data, offset)
-	if err != nil {
+	if _, err := l.file.ReadAt(buf, offset); err != nil {
 		return nil, err
 	}
-
-	return data, nil
+	return buf, nil
 }
 
-// Returns the current size of the log.
-func (l *Log) Size() int64 {
-	return l.endOffset
-}
-
-// Truncate removes data after the given offset.
+// Truncate cuts the file at offset and fsyncs. Used by recovery to drop a torn
+// tail. Truncating to the same offset twice is harmless, which is what makes
+// recovery safe to crash and repeat.
 func (l *Log) Truncate(offset int64) error {
-	if l.closed {
-		return errors.New("log is closed")
-	}
-
-	if offset < 0 || offset > l.endOffset {
-		return errors.New("invalid truncate offset")
-	}
-
 	if err := l.file.Truncate(offset); err != nil {
 		return err
 	}
-
 	if err := l.file.Sync(); err != nil {
 		return err
 	}
-
-	l.endOffset = offset
+	l.size = offset
 	return nil
 }
 
-// Sync makes pending changes durable.
-func (l *Log) Sync() error {
-	if l.closed {
-		return errors.New("log is closed")
-	}
-
-	return l.file.Sync()
-}
-
-// Close closes the log file.
+// Close fsyncs and closes the file.
 func (l *Log) Close() error {
-	if l.closed {
-		return nil
+	serr := l.file.Sync()
+	cerr := l.file.Close()
+	if serr != nil {
+		return serr
 	}
-
-	l.closed = true
-	return l.file.Close()
+	return cerr
 }

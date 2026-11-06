@@ -1,0 +1,10 @@
+# build outputs
+/kvdb
+/kvdb.exe
+/torture
+/torture.exe
+# torture working directory and scratch databases
+/torture-data/
+*.db
+*.db.lock
+*.db.compact
