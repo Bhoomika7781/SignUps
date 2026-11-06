@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math"
+	"math/big"
 	"os"
+	"strconv"
 	"sync"
 )
 
@@ -285,4 +288,190 @@ func (db *DB) Close() error {
 	}
 
 	return db.file.Close()
+}
+
+// List returns a snapshot of all current key-value pairs.
+func (db *DB) List() (map[string][]byte, error) {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	if db.closed {
+		return nil, errors.New("database is closed")
+	}
+
+	result := make(map[string][]byte, len(db.index))
+
+	for key, ref := range db.index {
+		value := make([]byte, int(ref.length))
+
+		if len(value) > 0 {
+			_, err := db.file.ReadAt(value, ref.offset)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		result[key] = value
+	}
+
+	return result, nil
+}
+
+// Stats returns the current number of keys and file size.
+func (db *DB) Stats() (int, int64, error) {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	if db.closed {
+		return 0, 0, errors.New("database is closed")
+	}
+
+	info, err := db.file.Stat()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return len(db.index), info.Size(), nil
+}
+
+// Calculate performs an atomic arithmetic operation on a stored numeric value.
+// Supported types: int, float
+// Supported operations: +, -, *, /
+func (db *DB) Calculate(
+	key string,
+	numberType string,
+	operation string,
+	operand string,
+) (string, error) {
+
+	if len(key) == 0 || len(key) > maxKeySize {
+		return "", errors.New("invalid key")
+	}
+
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	if db.closed || db.failed {
+		return "", errors.New("database is not writable")
+	}
+
+	// Find the existing value.
+	ref, found := db.index[key]
+	if !found {
+		return "", errors.New("numeric key not found")
+	}
+
+	current := make([]byte, int(ref.length))
+
+	if len(current) > 0 {
+		if _, err := db.file.ReadAt(current, ref.offset); err != nil {
+			return "", err
+		}
+	}
+
+	var result string
+
+	switch numberType {
+
+	case "int":
+
+		a, err := strconv.ParseInt(string(current), 10, 64)
+		if err != nil {
+			return "", errors.New("stored value is not a valid integer")
+		}
+
+		b, err := strconv.ParseInt(operand, 10, 64)
+		if err != nil {
+			return "", errors.New("operand must be a valid integer")
+		}
+
+		x := big.NewInt(a)
+		y := big.NewInt(b)
+		z := new(big.Int)
+
+		switch operation {
+		case "+":
+			z.Add(x, y)
+
+		case "-":
+			z.Sub(x, y)
+
+		case "*":
+			z.Mul(x, y)
+
+		case "/":
+			if b == 0 {
+				return "", errors.New("division by zero")
+			}
+			// Integer division truncates toward zero.
+			z.Quo(x, y)
+
+		default:
+			return "", errors.New("unsupported operation")
+		}
+
+		if !z.IsInt64() {
+			return "", errors.New("integer overflow")
+		}
+
+		result = z.String()
+
+	case "float":
+
+		a, err := strconv.ParseFloat(string(current), 64)
+		if err != nil || math.IsNaN(a) || math.IsInf(a, 0) {
+			return "", errors.New("stored value is not a valid float")
+		}
+
+		b, err := strconv.ParseFloat(operand, 64)
+		if err != nil || math.IsNaN(b) || math.IsInf(b, 0) {
+			return "", errors.New("operand must be a valid float")
+		}
+
+		var answer float64
+
+		switch operation {
+		case "+":
+			answer = a + b
+
+		case "-":
+			answer = a - b
+
+		case "*":
+			answer = a * b
+
+		case "/":
+			if b == 0 {
+				return "", errors.New("division by zero")
+			}
+			answer = a / b
+
+		default:
+			return "", errors.New("unsupported operation")
+		}
+
+		if math.IsNaN(answer) || math.IsInf(answer, 0) {
+			return "", errors.New("floating-point overflow")
+		}
+
+		result = strconv.FormatFloat(answer, 'f', -1, 64)
+
+	default:
+		return "", errors.New("type must be int or float")
+	}
+
+	// Persist the result as a normal PUT record.
+	value := []byte(result)
+
+	if err := db.appendRecord(recordPut, key, value); err != nil {
+		return "", err
+	}
+
+	// Update the in-memory index only after the record is durable.
+	db.index[key] = valueRef{
+		offset: db.endOffset - int64(len(value)),
+		length: uint32(len(value)),
+	}
+
+	return result, nil
 }

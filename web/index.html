@@ -1,0 +1,196 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrashDB Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<canvas id="shapeGridCanvas" class="shape-grid-canvas" aria-hidden="true"></canvas>
+
+<div class="sidebar">
+    <div class="brand">
+        <div class="logo">∞</div>
+        <div>
+            <h2>CrashDB</h2>
+            <small>Storage Engine</small>
+        </div>
+    </div>
+
+    <p class="menu-title">WORKSPACE</p>
+    <a class="nav active" href="#overview">◈ Overview</a>
+    <a class="nav" href="#operations">⌘ Operations</a>
+    <a class="nav" href="#records">▤ Records</a>
+    <a class="nav" href="#health">◉ Database Health</a>
+
+    <div class="sidebar-bottom">
+        <span class="online-dot"></span> Backend Connected
+        <small>CRASHDB · v1.0</small>
+    </div>
+</div>
+
+<main class="main">
+    <header class="topbar">
+        <div>
+            <h1>Dashboard Overview</h1>
+            <p>Monitor your database performance and storage.</p>
+        </div>
+        <div>
+            <span class="status" id="connectionStatus">Connecting...</span>
+            <button id="refreshBtn">↻ Refresh</button>
+        </div>
+    </header>
+
+    <section class="stats" id="overview">
+        <div class="card">
+            <p>Total Active Keys</p>
+            <h2 id="totalKeys">--</h2>
+            <small>Stored records</small>
+        </div>
+        <div class="card">
+            <p>Total Operations</p>
+            <h2 id="totalOperations">--</h2>
+            <small>Web session requests</small>
+        </div>
+        <div class="card">
+            <p>Database Size</p>
+            <h2 id="databaseSize">--</h2>
+            <small>Current file size</small>
+        </div>
+        <div class="card">
+            <p>Server Uptime</p>
+            <h2 id="uptime">--</h2>
+            <small>Current session</small>
+        </div>
+    </section>
+
+    <section class="middle">
+        <div class="card panel">
+            <h3>Database Activity</h3>
+            <p>Recent PUT, GET and DELETE requests</p>
+            <div class="chart" id="activityChart">Waiting for activity...</div>
+            <div class="legend">
+                <span>🟣 PUT</span>
+                <span>🟢 GET</span>
+                <span>🟠 DELETE</span>
+            </div>
+        </div>
+
+        <div class="card panel" id="health">
+            <h3>Database Health</h3>
+            <div class="health-ring">OK</div>
+            <h2 id="healthTitle">Connecting...</h2>
+            <p id="healthDescription">Checking database</p>
+            <hr>
+            <div class="health-row">
+                <span>Active keys</span>
+                <strong id="healthKeys">--</strong>
+            </div>
+            <div class="health-row">
+                <span>File size</span>
+                <strong id="healthSize">--</strong>
+            </div>
+        </div>
+    </section>
+
+    <section class="card operations" id="operations">
+        <h3>Quick Operations</h3>
+        <p>Interact directly with your database.</p>
+        <div class="tabs">
+            <button class="tab active" data-tab="put">PUT</button>
+            <button class="tab" data-tab="get">GET</button>
+            <button class="tab" data-tab="delete">DELETE</button>
+        </div>
+
+        <form id="operationForm">
+            <div class="field">
+                <label>KEY</label>
+                <input id="keyInput" placeholder="Enter key" maxlength="1024" required>
+            </div>
+            <div class="field" id="valueGroup">
+                <label>VALUE</label>
+                <textarea id="valueInput" placeholder="Enter value"></textarea>
+            </div>
+            <button class="execute" id="executeBtn" type="submit">Execute PUT →</button>
+        </form>
+        <div class="result" id="operationResult">Your operation result will appear here.</div>
+    </section>
+
+    <section class="card numeric-panel" id="numericOperations">
+        <div class="numeric-heading">
+            <div>
+                <h3>Numeric Operations</h3>
+                <p>Perform arithmetic directly on stored database values.</p>
+            </div>
+            <span class="numeric-tag">ADVANCED</span>
+        </div>
+
+        <form id="numericForm">
+            <div class="numeric-grid">
+                <div class="numeric-field">
+                    <label for="numericKey">DATABASE KEY</label>
+                    <input id="numericKey" placeholder="Example: balance" required maxlength="1024">
+                </div>
+                <div class="numeric-field">
+                    <label for="numberType">DATA TYPE</label>
+                    <select id="numberType">
+                        <option value="int">INTEGER</option>
+                        <option value="float">FLOAT</option>
+                    </select>
+                </div>
+                <div class="numeric-field">
+                    <label for="mathOperation">OPERATION</label>
+                    <select id="mathOperation">
+                        <option value="+">Addition (+)</option>
+                        <option value="-">Subtraction (-)</option>
+                        <option value="*">Multiplication (×)</option>
+                        <option value="/">Division (÷)</option>
+                    </select>
+                </div>
+                <div class="numeric-field">
+                    <label for="numericOperand">OPERAND</label>
+                    <input id="numericOperand" type="number" step="any" placeholder="Enter number" required>
+                </div>
+            </div>
+
+            <button type="submit" class="numeric-execute">Calculate &amp; Save →</button>
+        </form>
+
+        <div id="numericResult" class="numeric-result">
+            Your calculation result will appear here.
+        </div>
+    </section>
+
+    <section class="card records" id="records">
+        <div class="section-heading">
+            <div>
+                <h3>Stored Records</h3>
+                <p>Current database key-value pairs.</p>
+            </div>
+            <button id="recordsRefresh">↻ Reload</button>
+        </div>
+
+        <table>
+            <thead>
+                <tr><th>KEY</th><th>VALUE</th></tr>
+            </thead>
+            <tbody id="recordsTable">
+                <tr><td colspan="2">Loading records...</td></tr>
+            </tbody>
+        </table>
+    </section>
+
+    <section class="card records">
+        <h3>Recent Activity</h3>
+        <div id="recentActivity">No activity recorded yet.</div>
+    </section>
+
+    <footer>CRASHDB © 2026 · Crash-safe key-value storage engine</footer>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
