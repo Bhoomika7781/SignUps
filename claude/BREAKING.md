@@ -40,7 +40,7 @@ cannot fsync a directory on Windows, so there we rely on NTFS metadata journalin
 ## 3. Known weaknesses
 
 1. **Recovery is O(file size).** `scanLog` reads every byte to check the CRCs. 1M small keys take 1.39 s on Linux and
-   **<<___ s>>** on our laptop; a log of 1 MB values, or one never compacted, can pass 2 s.
+   0.59 s on our Windows laptop; a log of 1 MB values, or one never compacted, can pass 2 s.
 2. **No directory fsync on Windows.** NTFS rename atomicity is assumed, not verified. Power loss on Windows is not
    argued.
 3. **One bad record mid-file loses everything after it.** We cannot tell a torn tail from bit rot, so a flipped bit near
@@ -56,12 +56,16 @@ cannot fsync a directory on Windows, so there we rely on NTFS metadata journalin
 - **recovery-crash starved itself:** with a 46 MB preload, the first write after each restart started auto-compaction,
   which outlasted the 5–300 ms kill window. It was safe every time, but almost nothing else got tested, and it shows a
   real livelock: under constant kills the file never shrinks. We widened the window to 20–1500 ms and cut the preload.
-- **Torn writes are rare on Windows:** `WriteAt` takes µs and `fsync` ~35 ms, so kills land in crash point 3 and mixed
-  mode shows `torn=0`. We added `TestTornTailAtEveryByte` (cuts the file at every byte of the last record) and the
-  large-values mode.
+- **We could not produce a torn write by killing on Windows:** `WriteAt` hands the bytes to the OS cache in µs and `fsync`
+  takes ~35 ms, so kills land in crash point 3. Even 100 kills in large-values mode (1 MB values) gave `torn=0`. Torn
+  writes (A2, A7, B1) are therefore proven only by `TestTornTailAtEveryByte`, which cuts the file at every byte of the
+  last record, not by a live kill. (On Linux, mixed mode did repair torn tails.)
 - **Found while writing the tool:** `cmd.StdoutPipe` is closed by `Wait()` and can drop the last ACKs. We use our own
   `os.Pipe` and read to EOF.
-- Laptop results: **<<paste RESULT lines>>**
+- **Laptop results (Windows, all PASS, 0 violations):** mixed 500/500 (seed 12345, 2,161 ACKed ops, every kill hit an
+  in-flight op); large-values 100/100 (seed 999); compaction 100/100 (seed 7); recovery-crash 100/100 (seed 42, 169
+  kills landed inside `kvdb open`); disk-full 100/100 (seed 3, 99 writes rejected with FULL, none visible); million:
+  1,000,000 keys recovered in 591 ms.
 
 ## 5. With 24 more hours
 
