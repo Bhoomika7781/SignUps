@@ -10,6 +10,7 @@
 //	kvdb serve   <path> [--max-bytes N]   long-running mode, reads ops from stdin, prints ACK after each durable op
 //	kvdb compact <path>                   rewrite the file with only live keys
 //	kvdb ui      <path> [--port 8080]     local admin web page with a SQL query tool
+//	kvdb shell   <path>                   interactive SQL prompt, like psql
 //
 // --max-bytes N can be given to any command that writes.
 package main
@@ -37,6 +38,7 @@ const usageText = `usage:
   kvdb serve   <path> [--max-bytes N]
   kvdb compact <path>
   kvdb ui      <path> [--port 8080] [--max-bytes N]   (admin web page on 127.0.0.1)
+  kvdb shell   <path> [--max-bytes N]                 (interactive SQL prompt, like psql)
 `
 
 func main() {
@@ -91,6 +93,8 @@ func main() {
 		serve(path, opts)
 	case "ui":
 		cmdUI(path, opts, rest)
+	case "shell":
+		cmdShell(path, opts)
 	default:
 		fmt.Fprint(os.Stderr, usageText)
 		os.Exit(2)

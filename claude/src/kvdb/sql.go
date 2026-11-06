@@ -498,7 +498,7 @@ func (ex *executor) exec(p *parser) error {
 		ex.res.Database = name
 		ex.msg("You are now connected to database \"%s\".", name)
 	case p.word(`\conninfo`):
-		ex.msg("You are connected to database \"%s\" (file %s) through kvdb ui at http://%s.", ex.name, ex.path, ex.cat.Addr())
+		ex.msg("You are connected to database \"%s\" (file %s) through %s.", ex.name, ex.path, ex.cat.Addr())
 	case p.word(`\dt`):
 		plus := p.punct("+")
 		p.word("kv")

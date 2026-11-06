@@ -143,7 +143,13 @@ func (s *uiServer) resolve(name string) (string, error) {
 	return filepath.Join(s.dir, name), nil
 }
 
-func (s *uiServer) Addr() string { return s.addr }
+// Addr describes how the user is connected (shown by \conninfo).
+func (s *uiServer) Addr() string {
+	if s.addr == "" {
+		return "kvdb shell"
+	}
+	return "kvdb ui at http://" + s.addr
+}
 
 // Open returns the open database, opening it (with recovery) on first use.
 func (s *uiServer) Open(name string) (*engine.DB, string, error) {
