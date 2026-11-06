@@ -1,0 +1,78 @@
+flowchart TB
+  subgraph CLIENTS["Clients"]
+    CLI["kvdb put / get / del / batch / dump / check / compact<br/>(cmd/kvdb/main.go)"]
+    SERVE["kvdb serve (cmd/kvdb/serve.go)<br/>one goroutine per channel id prefix (w0., w1., c.)<br/>prints ACK id ONLY after the DB call returned nil"]
+  end
+
+  subgraph API["DB API (internal/database)"]
+    PUT["Put / Delete / Batch.Commit"]
+    GET["Get / Dump / Count<br/>take mu.RLock"]
+    LOCKS{{"LOCKS<br/>1. path.lock: OS file lock, one process per DB<br/>2. DB.mu sync.RWMutex: writers + compaction exclusive,<br/>readers shared; whole batch applied in one critical section"}}
+  end
+
+  subgraph WRITE["Write path: db.write() + storage.Log.Append()"]
+    W1["1. EncodeFrame: validate + build ONE frame<br/>(header, ops, CRC32C, CMIT) in memory"]
+    W2["2. mu.Lock()"]
+    GUARD{"3. DISK-FULL GUARD<br/>size + len(frame) &le; MaxBytes?"}
+    GC["3a. compactLocked() if it would free space"]
+    ERRF["ERR disk full<br/>nothing written"]
+    W4["4. pwrite(frame) at end of file  (File.WriteAt)"]
+    W5["5. fsync  (File.Sync / FlushFileBuffers)<br/>on error: ftruncate back to old size"]
+    W6["6. update in-memory index"]
+    W7["7. return nil  -> serve prints ACK id"]
+    W1 --> W2 --> GUARD
+    GUARD -- yes --> W4
+    GUARD -- no --> GC
+    GC -- fits now --> W4
+    GC -- still too big --> ERRF
+    W4 --> W5 --> W6 --> W7
+  end
+
+  INDEX[("IN-MEMORY INDEX (index.go)<br/>map key -> {value offset, value len, key len}<br/>never persisted; rebuilt by recovery")]
+
+  subgraph DISK["ONE DATA FILE  path  (little-endian)"]
+    HDR["FILE HEADER 16 B<br/>magic 'INVXDB01' 8 | version 4 | CRC32C 4"]
+    FRAME["FRAME (one per put / delete / whole batch)<br/>magic 'FRM1' 4 | payload len P 4 | op count N 4<br/>| N ops (P bytes) | CRC32C over [0,12+P) 4 | commit 'CMIT' 4"]
+    OP["OP<br/>kind 1 | key len 2 | value len 4 | key K | value V"]
+    HDR --- FRAME --- OP
+  end
+  TMP["path.compact (only during compaction)"]
+  LCK["path.lock"]
+
+  subgraph REC["Recovery: Open() -> recover()"]
+    R1["a. take path.lock"]
+    R2["b. half-done compaction?<br/>path exists: delete path.compact<br/>path missing + complete temp: rename temp -> path"]
+    R3["c. OpenLog: size &lt; 16 -> write fresh header + fsync<br/>bad header -> refuse (not our file)"]
+    R4["d. ScanFrames from offset 16:<br/>apply each VALID frame to index as a whole"]
+    R5["e. first invalid frame = torn tail:<br/>ftruncate(last valid end) + fsync (idempotent)"]
+    R6["f. ready"]
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6
+  end
+
+  subgraph COMP["Compaction: compactLocked() (holds mu)"]
+    C1["1. write header + live keys to path.compact (buffered)"]
+    C2["2. fsync path.compact, close"]
+    C3["3. close old file handle"]
+    C4["4. rename(path.compact -> path)  atomic replace"]
+    C5["5. fsync directory (Linux/macOS)"]
+    C6["6. reopen path, swap in new index"]
+    C1 --> C2 --> C3 --> C4 --> C5 --> C6
+  end
+
+  CLI --> PUT
+  SERVE --> PUT
+  CLI --> GET
+  SERVE --> GET
+  PUT --> W1
+  PUT -.-> LOCKS
+  GET -.-> LOCKS
+  GET --> INDEX
+  W6 --> INDEX
+  W4 --> DISK
+  GET -- "pread value" --> DISK
+  R4 --> INDEX
+  R4 -- reads --> DISK
+  C1 --> TMP
+  C4 --> DISK
+  R2 --> TMP
+  R1 --> LCK
