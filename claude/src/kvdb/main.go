@@ -9,7 +9,6 @@
 //	kvdb check   <path>                   verify file integrity, print OK or the reason
 //	kvdb serve   <path> [--max-bytes N]   long-running mode, reads ops from stdin, prints ACK after each durable op
 //	kvdb compact <path>                   rewrite the file with only live keys
-//	kvdb ui      <path> [--port 8080]     local admin web page with a SQL query tool
 //
 // --max-bytes N can be given to any command that writes.
 package main
@@ -36,7 +35,6 @@ const usageText = `usage:
   kvdb check   <path>
   kvdb serve   <path> [--max-bytes N]
   kvdb compact <path>
-  kvdb ui      <path> [--port 8080] [--max-bytes N]   (admin web page on 127.0.0.1)
 `
 
 func main() {
@@ -89,8 +87,6 @@ func main() {
 		fmt.Printf("OK compacted %d -> %d bytes\n", before, after)
 	case "serve":
 		serve(path, opts)
-	case "ui":
-		cmdUI(path, opts, rest)
 	default:
 		fmt.Fprint(os.Stderr, usageText)
 		os.Exit(2)
