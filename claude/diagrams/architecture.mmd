@@ -1,0 +1,58 @@
+flowchart TB
+    subgraph CLIENT["Client API (src/kvdb/main.go)"]
+        CLI["kvdb put / get / del / batch / dump / check / open"]
+        SERVE["kvdb serve: one goroutine per lane (w0, w1, ...)<br/>prints ACK id only after Batch returns nil"]
+    end
+
+    subgraph ENGINE["Engine (src/engine)"]
+        LOCK{{"sync.RWMutex<br/>writers: Lock (exclusive)<br/>get: RLock (shared)"}}
+        subgraph WRITE["Write path: db.go Batch()"]
+            W1["1 validateOps + encodeRecord<br/>(one record, one CRC-32C, no lock)"]
+            W2["2 take write Lock"]
+            W3["3 disk-full guard<br/>size + record > max_bytes ?<br/>yes: delete-only -> compactLocked(drop)<br/>else try compaction, else ErrFull<br/>(nothing written)"]
+            W4["4 f.WriteAt(record, size)<br/>append at end of last valid record"]
+            W5["5 f.Sync()  = fsync<br/>COMMIT POINT"]
+            W6["6 applyOp -> in-memory index<br/>size += len(record)"]
+            W7["7 Unlock, return nil -> serve prints ACK"]
+            W1 --> W2 --> W3 --> W4 --> W5 --> W6 --> W7
+        end
+        INDEX[("In-memory index (RAM)<br/>map key -> {value offset, vlen}<br/>+ live / dead byte counters<br/>NOT persisted: rebuilt at open")]
+        GET["Get(): RLock, index lookup,<br/>f.ReadAt(value)"]
+        subgraph REC["Recovery: db.go Open() + recover.go scanLog()"]
+            R1["1 remove leftover path.compact<br/>(half-done compaction)"]
+            R2["2 open / create file<br/>(new file: fsync directory)"]
+            R3["3 scan records from byte 0<br/>check: header >= 12B, magic KVR1,<br/>plen <= bytes left, CRC-32C"]
+            R4["4 apply ops of a record ONLY after its CRC passed"]
+            R5["5 torn tail? f.Truncate(validEnd) + f.Sync()"]
+            R6["6 ready"]
+            R1 --> R2 --> R3 --> R4 --> R5 --> R6
+        end
+        subgraph COMP["Compaction: compact.go compactLocked()"]
+            C1["1 write live keys to path.compact"]
+            C2["2 fsync temp file"]
+            C3["3 close temp + close old file"]
+            C4["4 os.Rename(temp, path)<br/>COMMIT POINT (atomic)"]
+            C5["5 fsync directory (Linux/macOS)"]
+            C6["6 reopen, swap index"]
+            C1 --> C2 --> C3 --> C4 --> C5 --> C6
+        end
+    end
+
+    subgraph DISK["On disk"]
+        FILE[("path (e.g. my.db): records, append-only<br/>[magic KVR1 4B][plen 4B][crc 4B][payload]<br/>payload: [count 4B] then per op:<br/>[type 1B][klen 4B][vlen 4B][key][value]")]
+        TMP[("path.compact<br/>exists only during compaction")]
+    end
+
+    CLI --> LOCK
+    SERVE --> LOCK
+    LOCK --> W1
+    LOCK --> GET
+    GET --> INDEX
+    W4 --> FILE
+    W5 --> FILE
+    W6 --> INDEX
+    R3 --> FILE
+    R4 --> INDEX
+    C1 --> TMP
+    C4 --> FILE
+    W3 -. "full" .-> C1
