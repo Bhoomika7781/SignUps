@@ -1,15 +1,15 @@
 # Architecture and robustness proof
-
+ 
 ## Part 1: Architecture diagram
-
+ 
 ![architecture](diagrams/architecture.png)
-
+ 
 The source is `diagrams/architecture.mmd` (Mermaid). It shows the components,
 the on-disk layout with field sizes, the numbered write ordering, the recovery
 flow, the compaction flow and the locks.
-
+ 
 ### Components
-
+ 
 | Component | Code |
 |---|---|
 | Client API | `internal/database/db.go`: `Open`, `Put`, `Get`, `Delete`, `Close`; `batch.go`: `NewBatch`, `Batch.Commit` |
@@ -21,9 +21,9 @@ flow, the compaction flow and the locks.
 | Compaction | `compact.go: (*DB).compactLocked` |
 | Disk-full guard | `db.go: (*DB).write` (`fits`, `compactionWouldHelp`); `compact.go` refuses to exceed `MaxBytes` |
 | Locks | `path.lock` (`storage/os_unix.go` flock, `os_windows.go` share-mode-0 handle); `DB.mu sync.RWMutex` |
-
+ 
 ### Write ordering (one put, one delete or one whole batch)
-
+ 
 1. `EncodeFrame` builds **one** frame in memory: header, all ops, CRC32C, `CMIT`.
 2. `mu.Lock()`.
 3. Disk-full guard: if `size + len(frame) > MaxBytes`, compact if that helps.
@@ -34,13 +34,12 @@ flow, the compaction flow and the locks.
    ftruncated back to the old size and fsynced.
 6. Update the in-memory index, all ops in order, still under `mu`.
 7. Return nil. `serve` then prints `ACK <id>`.
-
 ## Part 2: Scenario-to-mechanism proof table
-
+ 
 "torture X/seed" means `./torture --mode X --seed seed`. The numbers come from
 the runs listed under "Verification runs" below. Unit tests are in
 `tests/database_test.go` and run with `go test ./tests/`.
-
+ 
 | Scenario | Disk state at the moment of the kill | Mechanism that handles it | Where in the code | Verified by |
 |---|---|---|---|---|
 | **A1** kill before any byte of a put reaches the file | File ends at the end of the previous valid frame; the new frame exists only in memory | Nothing to do: recovery scans all valid frames; the key has its previous value | `db.go: write` (before `log.Append`); `recovery.go: recover` | torture default/12345 (kills land while frames are being built); unit `TestTornTailAtEveryByte` (cut = 0 extra bytes) |
@@ -75,12 +74,12 @@ the runs listed under "Verification runs" below. Unit tests are in
 | **F2** kill, restart, kill during recovery, again | Torn tail and/or partially truncated | Recovery is read-only except an idempotent truncate | `recovery.go` | torture recovery-crash/42 (1–3 open kills per iteration) |
 | **F3** 1,000,000 keys, kill, open | About 31 MB file | Single sequential scan with a 4 MB buffered reader, CRC32C (hardware), pre-sized hash map | `scan.go: ScanFrames`; `db.go: Open` | unit `TestRecoveryOneMillionKeys` (about 0.5 s on our machine); manual: `./kvdb fill big.db 1000000` then `./kvdb open big.db` |
 | **F4** file truncated by one byte | Last frame missing its last byte (`T` of `CMIT`) | `remaining < 20+P`, so the last frame is dropped. Only that one frame is lost | `scan.go`; `recovery.go` | unit `TestTruncateOneByte`; manual: truncate with any tool, then `./kvdb open` / `check` |
-
+ 
 ### Verification runs
-
+ 
 Run on Linux (2 vCPU, ext4-style overlay filesystem) while writing this
 document:
-
+ 
 | Command | Result |
 |---|---|
 | `./torture --iterations 500 --seed 12345` | 500/500 passed, 375,078 ops ACKed, 1m59s |
@@ -90,17 +89,25 @@ document:
 | `./torture --iterations 100 --seed 5 --mode large-batch` | 100/100 passed, 79,996 ops ACKed (10,000-op batches), 1m29s |
 | `./torture --iterations 100 --seed 3 --mode disk-full` | 100/100 passed, 206,818 clean "disk full" errors, 12,967 ACKs after a disk-full error, 33s |
 | `go test ./tests/` | all 17 tests pass; 1,000,000-key recovery in about 0.5 s |
-
-**Team TODO before submission:** re-run these on the demo laptop (Windows) and
-update this table with those results.
-
+ 
+Re-run on our demo laptop (Windows, Go 1.27.3, NTFS):
+ 
+| Command | Result |
+|---|---|
+| `torture --iterations 50 --seed 12345` | passed |
+| `torture --iterations 30 --seed 7 --mode compaction` | passed |
+| `torture --iterations 30 --seed 42 --mode recovery-crash` | passed |
+| `go test -short ./tests/` | ok (36 s; Windows fsync is slower) |
+| `go test ./tests/ -run OneMillion -v` | 1,000,000 keys recovered in 313 ms |
+| Manual: `kvdb serve`, `put`, `batch 3`, End task in Task Manager, `check`, `dump` | `OK keys=2 frames=2 bytes=91`; batch fully applied |
+ 
 Mutation check (showing the oracle is not rigged): we temporarily changed
 `db.write` to write each op of a batch as its own frame. `torture --seed 777`
 failed in iteration 1 with "batch w0.1-1 is PARTIALLY visible". We then
 reverted the change.
-
+ 
 ## Part 3: The three guarantees
-
+ 
 **1. Durability: once ACK is sent, the data survives.** `serve` prints
 `ACK <id>` only after `DB.write` returned nil. `write` returns nil only after
 `Log.Append` returned, and `Append` returns only after `File.WriteAt` wrote the
@@ -111,7 +118,7 @@ frame: it truncates only from the first invalid frame onward. That frame comes
 after every fsynced frame, because appends are serialised under `mu` and a
 failed append is truncated back before the next one starts. So an ACKed frame
 is always replayed.
-
+ 
 **2. Atomicity: a batch is never half visible.** A batch is encoded into a
 single frame (`EncodeFrame`) and written with one `WriteAt` and one `Sync`.
 On disk, recovery applies a frame only if all `20+P` bytes are present, the
@@ -123,7 +130,7 @@ the index is updated for all ops of the batch inside one `mu.Lock()` critical
 section after the fsync, and readers hold `mu.RLock()`, so a concurrent `get`
 sees the state before or after the batch. A disk-full rejection happens before
 any byte is written, so it cannot leave part of a batch.
-
+ 
 **3. Recoverability: open() always succeeds on a file we produced.** The file
 only changes in four ways:
 - `WriteAt` + `Sync` of a frame at the end,
@@ -131,7 +138,6 @@ only changes in four ways:
 - writing the 16-byte header into a file shorter than 16 bytes,
 - compaction's `rename(path.compact, path)` of a file that was fully written
   and fsynced first.
-
 A kill at any point leaves one of three states:
 1. a valid header followed by valid frames and possibly one torn frame, which
    recovery truncates,
@@ -139,9 +145,9 @@ A kill at any point leaves one of three states:
    could exist yet,
 3. a leftover `path.compact`, which is deleted, or promoted if `path` is
    missing and the temp file scans cleanly.
-
 Recovery itself only reads, then truncates to an offset it computed from the
 data, then fsyncs. Running it again on the same file computes the same offset.
 So a crash during recovery, or during compaction, just leads to another open
 that does the same thing. The only case where open refuses is a header that is
 present but not ours, which our code never writes.
+ 
