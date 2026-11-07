@@ -1,6 +1,6 @@
 # PROMPTS.md: AI prompt log
 
-All prompts were sent to **Claude** (claude.ai) on **2026-11-06**. Times are IST and approximate. They are in
+All prompts were sent to **Claude** (claude.ai) on **2026-11-06** and **2026-11-07**. Times are IST and approximate. They are in
 chronological order and unedited, typos included. Where a message was only pasted terminal output or a screenshot,
 it is marked *[pasted …]* and summarized instead of reproduced in full.
 
@@ -169,3 +169,40 @@ it is marked *[pasted …]* and summarized instead of reproduced in full.
 
 **23:35**
 > give me the content to put in prompt md please
+
+---
+
+## 2026-11-07
+
+**05:52**
+> yeah now i want to do some senarios where the db will fail can u tell me how to do that
+
+**05:56**: *[pasted terminal output: `mkdir fail` in the `SignUps` folder, then `.\bin\kvdb` "not recognized" errors because the terminal was in the wrong folder]*
+
+**05:57**: *[pasted terminal output: torn-tail scenario: `check` → `CORRUPT: torn record at offset 31`, `open` → `truncated_bytes=31`, `dump` → `a apple`]*
+
+**05:58**: *[pasted terminal output: garbage scenario: `CORRUPT: torn header at offset 31`, `truncated_bytes=9`]*
+
+**05:58**: *[pasted terminal output: leftover `.compact` file scenario: `removed_temp=true`]*
+
+**05:59**: *[pasted terminal output: invalid-input scenario: `put fail\l.db "" value` → `OK`, 1025-byte key → `invalid operation`]*
+
+**06:02**
+> now what i want u to do is to make a list of commands like a docx or pdf soo that u will tell me all the commands like from the running of the db file then the part where i run the ui files then in hte cli how to enter commands and what commands do what and example for \? command in the cli and then i want u to give me the failining commands also and all that should have a reason why it failed and what is the reason it failed
+
+**06:13**: *[pasted shell output: `\d+ kv` on the torture database, showing 7.26 MB reclaimable]*
+> what does vauucm removes it mean
+
+**06:18**
+> now tell me what are we using like big endian or little endian and can u help me get the high level and low level model of our project
+
+**06:22**
+> cna u givem e a read me file for that high level and low level thing
+
+**07:13**: *[pasted terminal output: `kvdb serve fail\two.db` with lines typed with a leading space → `ERR put INVALID unknown command`]*
+
+**07:20**, with attachment `Kill It and Prove It.pdf`
+> now is everything in the pdf done
+
+**07:21**
+> can u giveme em the prompt md again
