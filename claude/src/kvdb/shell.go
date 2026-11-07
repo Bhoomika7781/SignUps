@@ -65,11 +65,18 @@ func cmdShell(path string, opts engine.Options) {
 	expanded, timing := false, false
 	in := bufio.NewReaderSize(os.Stdin, 1<<20)
 	var buf strings.Builder
+	// tx holds the statements typed since BEGIN. They are sent together at
+	// COMMIT, so the whole transaction becomes ONE atomic batch.
+	var tx strings.Builder
 
 	for {
 		name := cur
+		mark := "="
+		if tx.Len() > 0 {
+			mark = "=*" // like psql: inside a transaction
+		}
 		if buf.Len() == 0 {
-			fmt.Fprintf(out, "%s=> ", name)
+			fmt.Fprintf(out, "%s%s> ", name, mark)
 		} else {
 			fmt.Fprintf(out, "%s-> ", name)
 		}
@@ -88,6 +95,9 @@ func cmdShell(path string, opts engine.Options) {
 			cmd := strings.Fields(trimmed)[0]
 			switch cmd {
 			case `\q`, `\quit`:
+				if tx.Len() > 0 {
+					fmt.Fprintln(out, "WARNING:  transaction was not committed, so nothing from it was written.")
+				}
 				return
 			case `\x`:
 				expanded = !expanded
@@ -100,7 +110,14 @@ func cmdShell(path string, opts engine.Options) {
 			case `\echo`:
 				fmt.Fprintln(out, strings.TrimSpace(strings.TrimPrefix(trimmed, `\echo`)))
 				continue
-			case `\torture`:
+			case `\c`, `\connect`, `\torture`:
+				if tx.Len() > 0 {
+					fmt.Fprintln(out, "ERROR:  finish the transaction first (COMMIT or ROLLBACK)")
+					fmt.Fprintln(out)
+					continue
+				}
+			}
+			if cmd == `\torture` {
 				out.Flush()
 				runTortureFromShell(s, out, strings.Fields(trimmed)[1:], cur)
 				continue
@@ -130,9 +147,24 @@ func cmdShell(path string, opts engine.Options) {
 		buf.WriteString(line)
 		buf.WriteByte('\n')
 		if strings.HasSuffix(trimmed, ";") || rerr != nil {
-			res := runSQL(s, cur, buf.String())
+			stmt := buf.String()
 			buf.Reset()
-			cur = printResult(out, res, cur, expanded, timing)
+			pending := tx.String() + stmt
+			if txOpen(pending) && rerr == nil {
+				// Inside BEGIN ... : keep collecting, write nothing yet.
+				tx.Reset()
+				tx.WriteString(pending)
+				if strings.EqualFold(firstWord(stmt), "BEGIN") || strings.EqualFold(firstWord(stmt), "START") {
+					fmt.Fprintln(out, "BEGIN")
+				} else {
+					fmt.Fprintln(out, "(queued: runs at COMMIT as part of one atomic batch)")
+				}
+				fmt.Fprintln(out)
+			} else {
+				tx.Reset()
+				res := runSQL(s, cur, pending)
+				cur = printResult(out, res, cur, expanded, timing)
+			}
 		}
 		if rerr != nil {
 			break
@@ -326,4 +358,35 @@ func runTortureFromShell(s *uiServer, out *bufio.Writer, args []string, cur stri
 		fmt.Fprintf(out, "torture exited with: %v\n", err)
 	}
 	fmt.Fprintf(out, "Look at the crashed database with:  \\c %s   then   SELECT count(*) FROM kv;   \\d+ kv\n\n", strings.TrimSuffix(tortureDBName, ".db"))
+}
+
+// firstWord returns the first word of a statement (upper/lower case kept).
+func firstWord(stmt string) string {
+	f := strings.Fields(stmt)
+	if len(f) == 0 {
+		return ""
+	}
+	return strings.TrimSuffix(f[0], ";")
+}
+
+// txOpen reports whether the statements leave a transaction open, i.e. a
+// BEGIN without a later COMMIT / END / ROLLBACK / ABORT.
+func txOpen(sql string) bool {
+	toks, err := tokenize(sql)
+	if err != nil {
+		return false
+	}
+	open := false
+	for _, st := range splitStatements(toks) {
+		if len(st) == 0 || st[0].k != 'w' {
+			continue
+		}
+		switch strings.ToUpper(st[0].s) {
+		case "BEGIN", "START":
+			open = true
+		case "COMMIT", "END", "ROLLBACK", "ABORT":
+			open = false
+		}
+	}
+	return open
 }
