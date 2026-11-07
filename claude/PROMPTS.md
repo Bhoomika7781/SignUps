@@ -206,3 +206,16 @@ it is marked *[pasted …]* and summarized instead of reproduced in full.
 
 **07:21**
 > can u giveme em the prompt md again
+
+
+**07:28**, with attachment: the current `BREAKING.md`
+> cai update thus noew
+
+**08:37**: *[pasted the Mermaid source of `diagrams/architecture.mmd`]*
+> i wnat a better one
+
+**08:50**
+> i want to buikd a ppt for thi soo can u help me
+
+**09:02**
+> CANU U GIVE ME THE UPDATED PROPMPT
