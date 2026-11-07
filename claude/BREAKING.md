@@ -43,9 +43,10 @@ cannot fsync a directory on Windows, so there we rely on NTFS metadata journalin
    0.59 s on our Windows laptop; a log of 1 MB values, or one never compacted, can pass 2 s.
 2. **No directory fsync on Windows.** NTFS rename atomicity is assumed, not verified. Power loss on Windows is not
    argued.
-3. **One bad record mid-file loses everything after it.** We cannot tell a torn tail from bit rot, so a flipped bit near
-   the start would truncate later ACKed data.
-4. **No cross-process lock.** Two writer processes on one file would interleave appends.
+3. **One bad record mid-file loses everything after it.** We cannot tell a torn tail from bit rot. *Reproduced:* flipping
+   byte 27 (inside the first record's value) of a 3-key file made `open` truncate all 95 bytes, losing all 3 keys.
+4. **No cross-process lock.** *Reproduced:* two `kvdb serve` processes on one file each got `ACK` for a put, but both
+   wrote at offset 0, so B overwrote A and A's ACKed key was lost. One process per database is a usage rule.
 5. **Compaction holds the global lock** and needs space for a second copy; `--max-bytes` limits only the main file.
 6. **One fsync per write, no group commit:** about 25–30 writes per second on our laptop (fsync ≈ 35 ms).
 
@@ -60,6 +61,9 @@ cannot fsync a directory on Windows, so there we rely on NTFS metadata journalin
   takes ~35 ms, so kills land in crash point 3. Even 100 kills in large-values mode (1 MB values) gave `torn=0`. Torn
   writes (A2, A7, B1) are therefore proven only by `TestTornTailAtEveryByte`, which cuts the file at every byte of the
   last record, not by a live kill. (On Linux, mixed mode did repair torn tails.)
+- **Shell transactions were not atomic (found while testing, fixed):** the `kvdb shell` extra sent each `;` statement
+  on its own, so `BEGIN;` / `INSERT…;` / `COMMIT;` on separate lines saved the INSERT at once. It now queues statements
+  until `COMMIT` and sends them as one batch (prompt `=*>`). The engine was never affected.
 - **Found while writing the tool:** `cmd.StdoutPipe` is closed by `Wait()` and can drop the last ACKs. We use our own
   `os.Pipe` and read to EOF.
 - **Laptop results (Windows, all PASS, 0 violations):** mixed 500/500 (seed 12345, 2,161 ACKed ops, every kill hit an
