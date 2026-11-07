@@ -4,9 +4,10 @@
 
 ![architecture](diagrams/architecture.png)
 
-The source is `diagrams/architecture.mmd` (Mermaid). It shows the components (client API, write path, in-memory index,
-recovery, compaction, disk-full guard), the on-disk format with field sizes, the numbered write ordering, the recovery
-flow and the lock.
+Sources: `diagrams/architecture.svg` (the drawing above, also as `architecture.png`) and `diagrams/architecture.mmd`
+(the same design as Mermaid, which GitHub renders). It shows the components (clients, engine API, write path, in-memory
+index, recovery, compaction, disk-full guard), the on-disk format with field sizes and byte order, the numbered write
+ordering with its commit point, the recovery flow, the compaction commit point (rename) and the lock.
 
 **On-disk record** (the file has no header; it is records back to back, little-endian):
 
